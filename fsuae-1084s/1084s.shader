@@ -97,7 +97,7 @@
        structural match to Amiberry's two dedicated blur passes. */
     vec3 blurbuffer(vec2 uv) {
         vec2  tc = toTex(uv);
-        float dy = rubyInputSize.y / (rubyOutputSize.y * rubyTextureSize.y);
+        float dy = rubyInputSize.y / (617.0 * rubyTextureSize.y);
 
         vec3 s = texture2D(rubyTexture, tc                       ).rgb * W0;
         s += texture2D(rubyTexture, tc + vec2(0.0,  1.0*dy)).rgb * W1;
@@ -186,7 +186,7 @@
 
         /* ── Brightness-dependent scanlines (time-animated) ─────────────── */
         float luma          = dot(col, vec3(0.299, 0.587, 0.114));
-        float scanline_phase = curved_uv.y * rubyOutputSize.y * 1.5;
+        float scanline_phase = curved_uv.y * 617.0 * 1.5;
         float scans         = clamp(0.35 + 0.35 * sin(1.5*time + scanline_phase),
                                     0.0, 1.0);
         float s             = pow(scans, 0.9);
