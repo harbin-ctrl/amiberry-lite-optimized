@@ -186,7 +186,7 @@
 
         /* ── Brightness-dependent scanlines (time-animated) ─────────────── */
         float luma          = dot(col, vec3(0.299, 0.587, 0.114));
-        float scanline_phase = curved_uv.y * 617.0 * 1.5;
+        float scanline_phase = curved_uv.y * 838.0 * 1.5;
         float scans         = clamp(0.35 + 0.35 * sin(1.5*time + scanline_phase),
                                     0.0, 1.0);
         float s             = pow(scans, 0.9);
