@@ -1,99 +1,123 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    Commodore 1084S CRT Monitor Shader for FS-UAE
+    Commodore 1084S CRT Monitor Shader for FS-UAE — v2 (two-pass)
 
-    Ported from the Amiberry 8.x built-in "1084" shader.
-    The Commodore 1084S was the definitive monitor for Amiga computers —
-    a 14" colour monitor based on aperture-grille CRT technology.
+    Pass 1 — Horizontal 9-tap Gaussian blur → intermediate texture
+    Pass 2 — 1084S CRT shader:
+                rubyOrigTexture  original emulator frame  (backbuffer)
+                rubyTexture      pass-1 output            (vertical blur applied
+                                                           inline → full 2D Gaussian)
 
-    Features faithfully reproduced from Amiberry's embedded shader:
-      - Barrel distortion (very mild — the 1084S was nearly flat)
-      - Edge-dependent RGB convergence errors
-      - Horizontal sync instability (subtle — monitor-grade, not TV)
-      - Halation / phosphor glow for bright areas (approximated via in-shader blur)
-      - 1084S warm colour temperature: vec3(1.08, 1.02, 0.88)
-      - Filmic contrast curve (level adjustment)
-      - Mild vignette
-      - Brightness-dependent scanlines with time animation
-      - Aperture grille phosphor mask (RGB vertical stripes, Trinitron style)
-      - Filmic tone mapping
-      - Subtle analog noise
-      - Minimal flicker
+    This matches Amiberry's three-stage approach (H-blur pass, V-blur pass,
+    main CRT shader) by folding the vertical pass into the CRT shader, reaching
+    equivalent quality at 9 + (3+9) = 21 texture reads vs Amiberry's ~22.
 
-    Port notes:
-      - Amiberry uniforms (backbuffer, blurbuffer, modulate, size, resolution, time)
-        mapped to FS-UAE ruby* uniforms and rubyFrameCount.
-      - Blur buffer approximated with a 9-tap Gaussian in-shader (adds ~9 extra
-        texture reads, but the halation contribution is small and the Raspberry Pi 4
-        VideoCore VI handles it fine at Amiga resolutions).
-      - Frame/bezel overlay removed (FS-UAE has its own overlay system).
-      - Y-flip in tsample removed (FS-UAE textures are right-side-up).
-
-    Original shader copyright Dimitris Panokostas / Amiberry contributors.
-    FS-UAE port in the public domain.
+    Fallback: git checkout v1-single-pass 1084s.shader
 -->
 <shader language="GLSL">
 
+<!-- ── Shared vertex shader ──────────────────────────────────────────────── -->
 <vertex><![CDATA[
-    uniform vec2 rubyTextureSize;
-    uniform vec2 rubyInputSize;
-
-    varying vec2 vUV; /* normalised 0..1 within the Amiga image */
-
     void main() {
-        gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
-        /* Convert to 0..1 image-normalised space for all the distortion math */
-        vUV = gl_MultiTexCoord0.xy * (rubyTextureSize / rubyInputSize);
+        gl_Position  = gl_ModelViewProjectionMatrix * gl_Vertex;
+        gl_TexCoord[0] = gl_MultiTexCoord0;
     }
 ]]></vertex>
 
-<fragment><![CDATA[
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- PASS 1 — Horizontal 9-tap Gaussian blur                                -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<fragment scale="1.0" filter="linear"><![CDATA[
     uniform sampler2D rubyTexture;
     uniform vec2 rubyTextureSize;
-    uniform vec2 rubyInputSize;
-    uniform vec2 rubyOutputSize;
-    uniform int  rubyFrameCount;
 
-    varying vec2 vUV;
+    /* Gaussian sigma ≈ 1.5, kernel ±4 texels */
+    const float W0 = 0.2270270270;
+    const float W1 = 0.1945945946;
+    const float W2 = 0.1216216216;
+    const float W3 = 0.0540540541;
+    const float W4 = 0.0162162162;
 
-    /* Convert image-normalised tc (0..1) back to a texture2D coordinate */
-    vec2 toTex(vec2 tc) {
-        return tc * (rubyInputSize / rubyTextureSize);
+    void main() {
+        vec2  tc = gl_TexCoord[0].xy;
+        float dx = 1.0 / rubyTextureSize.x;
+
+        vec3 s = texture2D(rubyTexture, tc                       ).rgb * W0;
+        s += texture2D(rubyTexture, tc + vec2( 1.0*dx, 0.0)).rgb * W1;
+        s += texture2D(rubyTexture, tc + vec2(-1.0*dx, 0.0)).rgb * W1;
+        s += texture2D(rubyTexture, tc + vec2( 2.0*dx, 0.0)).rgb * W2;
+        s += texture2D(rubyTexture, tc + vec2(-2.0*dx, 0.0)).rgb * W2;
+        s += texture2D(rubyTexture, tc + vec2( 3.0*dx, 0.0)).rgb * W3;
+        s += texture2D(rubyTexture, tc + vec2(-3.0*dx, 0.0)).rgb * W3;
+        s += texture2D(rubyTexture, tc + vec2( 4.0*dx, 0.0)).rgb * W4;
+        s += texture2D(rubyTexture, tc + vec2(-4.0*dx, 0.0)).rgb * W4;
+
+        gl_FragColor = vec4(s, 1.0);
+    }
+]]></fragment>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- PASS 2 — 1084S CRT shader                                              -->
+<!--   rubyOrigTexture = original frame  →  backbuffer (with convergence)  -->
+<!--   rubyTexture     = H-blurred frame →  vertical blur inline → blurbuf -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<fragment scale="1.0" filter="linear"><![CDATA[
+    uniform sampler2D rubyTexture;       /* pass-1 output: H-blurred frame */
+    uniform sampler2D rubyOrigTexture;   /* original emulator frame */
+    uniform vec2      rubyTextureSize;
+    uniform vec2      rubyInputSize;
+    uniform vec2      rubyOutputSize;
+    uniform int       rubyFrameCount;
+
+    /* Gaussian weights — must match pass 1 for isotropic result */
+    const float W0 = 0.2270270270;
+    const float W1 = 0.1945945946;
+    const float W2 = 0.1216216216;
+    const float W3 = 0.0540540541;
+    const float W4 = 0.0162162162;
+
+    /* 0..1 image-normalised UV from raw texture coord */
+    vec2 uvNorm(vec2 tc) {
+        return tc * (rubyTextureSize / rubyInputSize);
     }
 
-    /* Sample with gamma decode — mirrors Amiberry's tsample().
-       tc is in 0..1 image-normalised space, no y-flip needed in FS-UAE. */
-    vec3 tsample(vec2 tc) {
-        vec3 s = pow(abs(texture2D(rubyTexture, toTex(tc)).rgb), vec3(2.2));
+    /* 0..1 image-normalised → texture2D sample coord */
+    vec2 toTex(vec2 uv) {
+        return uv * (rubyInputSize / rubyTextureSize);
+    }
+
+    /* Sample original frame with gamma decode — Amiberry's tsample() */
+    vec3 tsample(vec2 uv) {
+        vec3 s = pow(abs(texture2D(rubyOrigTexture, toTex(uv)).rgb), vec3(2.2));
         return s * 1.25;
     }
 
-    /* 9-tap Gaussian approximation of the blur buffer used for halation.
-       Radius is ~4 output pixels.  Weights sum to ~1. */
-    vec3 approxBlur(vec2 tc) {
-        vec2 r = 4.0 / rubyInputSize;
-        vec3 s;
-        s  = texture2D(rubyTexture, toTex(tc)).rgb                           * 0.2702;
-        s += texture2D(rubyTexture, toTex(tc + vec2( r.x,  0.0))).rgb        * 0.1080;
-        s += texture2D(rubyTexture, toTex(tc + vec2(-r.x,  0.0))).rgb        * 0.1080;
-        s += texture2D(rubyTexture, toTex(tc + vec2( 0.0,  r.y))).rgb        * 0.1080;
-        s += texture2D(rubyTexture, toTex(tc + vec2( 0.0, -r.y))).rgb        * 0.1080;
-        s += texture2D(rubyTexture, toTex(tc + vec2( r.x,  r.y))).rgb        * 0.0495;
-        s += texture2D(rubyTexture, toTex(tc + vec2(-r.x,  r.y))).rgb        * 0.0495;
-        s += texture2D(rubyTexture, toTex(tc + vec2( r.x, -r.y))).rgb        * 0.0495;
-        s += texture2D(rubyTexture, toTex(tc + vec2(-r.x, -r.y))).rgb        * 0.0495;
-        /* Gamma decode the blur sample the same way tsample does */
-        s = pow(abs(s), vec3(2.2)) * 1.25;
-        return s;
+    /* Vertical 9-tap Gaussian on the H-blurred texture.
+       Combined with pass 1 this is a separable 2D Gaussian — exact
+       structural match to Amiberry's two dedicated blur passes. */
+    vec3 blurbuffer(vec2 uv) {
+        vec2  tc = toTex(uv);
+        float dy = 1.0 / rubyTextureSize.y;
+
+        vec3 s = texture2D(rubyTexture, tc                       ).rgb * W0;
+        s += texture2D(rubyTexture, tc + vec2(0.0,  1.0*dy)).rgb * W1;
+        s += texture2D(rubyTexture, tc + vec2(0.0, -1.0*dy)).rgb * W1;
+        s += texture2D(rubyTexture, tc + vec2(0.0,  2.0*dy)).rgb * W2;
+        s += texture2D(rubyTexture, tc + vec2(0.0, -2.0*dy)).rgb * W2;
+        s += texture2D(rubyTexture, tc + vec2(0.0,  3.0*dy)).rgb * W3;
+        s += texture2D(rubyTexture, tc + vec2(0.0, -3.0*dy)).rgb * W3;
+        s += texture2D(rubyTexture, tc + vec2(0.0,  4.0*dy)).rgb * W4;
+        s += texture2D(rubyTexture, tc + vec2(0.0, -4.0*dy)).rgb * W4;
+
+        return pow(abs(s), vec3(2.2)) * 1.25;
     }
 
-    /* Uncharted-2 / Hable filmic tone map — same as Amiberry */
     vec3 filmic(vec3 c) {
         vec3 x = max(vec3(0.0), c - vec3(0.004));
         return (x * (6.2 * x + 0.5)) / (x * (6.2 * x + 1.7) + 0.06);
     }
 
-    /* Very mild barrel distortion — the 1084S had an almost-flat screen */
+    /* Very mild barrel — the 1084S screen was nearly flat */
     vec2 curve(vec2 uv) {
         uv = (uv - 0.5) * 2.0;
         uv *= 1.04;
@@ -109,12 +133,10 @@
     }
 
     void main() {
-        /* Time in seconds from frame counter */
-        float time = float(rubyFrameCount) / 60.0;
-
-        vec2 uv         = vUV;
-        vec2 resolution = rubyOutputSize;
-        vec2 size       = rubyInputSize;
+        float time       = float(rubyFrameCount) / 60.0;
+        vec2  uv         = uvNorm(gl_TexCoord[0].xy);
+        vec2  resolution = rubyOutputSize;
+        vec2  size       = rubyInputSize;
 
         /* ── Barrel distortion ──────────────────────────────────────────── */
         vec2 curved_uv = mix(curve(uv), uv, 0.80);
@@ -124,7 +146,7 @@
         vec2  center_dist = curved_uv - 0.5;
         float edge_factor = dot(center_dist, center_dist) * 4.0;
 
-        /* ── Horizontal instability (monitor-grade: subtle) ─────────────── */
+        /* ── Horizontal instability (monitor-grade: very subtle) ─────────── */
         float x = sin(0.1  * time + curved_uv.y * 13.0)
                 * sin(0.23 * time + curved_uv.y * 19.0)
                 * sin(0.3  + 0.11 * time + curved_uv.y * 23.0) * 0.0012;
@@ -132,7 +154,7 @@
         x = x * 0.06 + o * 0.06;
 
         /* ── Sample RGB with convergence offset per channel ─────────────── */
-        vec3 col;
+        vec3  col;
         float cs = 0.0004;
         col.r = tsample(vec2(x + scuv.x + cs*(1.0 + 2.0*edge_factor),
                                  scuv.y + cs*(0.7 + 1.2*edge_factor))).r + 0.02;
@@ -140,8 +162,8 @@
         col.b = tsample(vec2(x + scuv.x - cs*(1.2 + 1.5*edge_factor),
                                  scuv.y + cs*(0.5 + 1.0*edge_factor))).b + 0.02;
 
-        /* ── Halation: bright areas bleed through the CRT glass ─────────── */
-        vec3  blurr        = approxBlur(vec2(scuv.x, scuv.y));
+        /* ── Halation — separable 2D Gaussian (H in pass 1, V here) ────── */
+        vec3  blurr        = blurbuffer(vec2(scuv.x, scuv.y));
         float blur_luma    = dot(blurr, vec3(0.299, 0.587, 0.114));
         vec3  halation_col = blurr * vec3(1.1, 1.0, 0.85);
         col += halation_col * 0.12 * smoothstep(0.15, 0.8, blur_luma);
