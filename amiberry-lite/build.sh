@@ -198,19 +198,69 @@ else
 fi
 
 # ── 9. ROMs ───────────────────────────────────────────────────────────────────
+#
+# Amiga Forever ROMs are XOR-encrypted with rom.key (11-byte "AMIROMTYPE1"
+# header, then the ROM data XOR'd with rom.key cycling).  Decrypt on the fly
+# if we find a rom.key alongside the ROM file.
+
+CLOANTO_HEADER='AMIROMTYPE1'
+
+# Decrypt a Cloanto ROM in-place to DST using KEY.
+decrypt_rom() {
+    local src="$1" dst="$2" key="$3"
+    python3 - "$src" "$dst" "$key" <<'PYEOF'
+import sys
+src, dst, key_path = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(key_path, 'rb') as f: key = f.read()
+with open(src, 'rb') as f: data = f.read()
+enc = data[11:]  # skip AMIROMTYPE1 header
+out = bytes(b ^ key[i % len(key)] for i, b in enumerate(enc))
+with open(dst, 'wb') as f: f.write(out)
+PYEOF
+}
 
 info "Checking ROMs in ${ROM_DIR}..."
 
 MISSING_ROMS=()
 for rom in "${REQUIRED_ROMS[@]}"; do
     if [[ -f "${ROM_DIR}/${rom}" ]]; then
-        ok "${rom}"
+        # Already present — check if it's still encrypted
+        header="$(head -c 11 "${ROM_DIR}/${rom}" 2>/dev/null || true)"
+        if [[ "$header" == "$CLOANTO_HEADER" ]]; then
+            echo "    [DECRYPT] ${rom} — Cloanto-encrypted, decrypting in place..."
+            key="$(find_file "rom.key")"
+            if [[ -z "$key" ]]; then
+                warn "rom.key not found — cannot decrypt ${rom}"
+                MISSING_ROMS+=("$rom")
+            else
+                tmp="${ROM_DIR}/${rom}.tmp"
+                decrypt_rom "${ROM_DIR}/${rom}" "$tmp" "$key"
+                mv "$tmp" "${ROM_DIR}/${rom}"
+                ok "${rom} (decrypted)"
+            fi
+        else
+            ok "${rom}"
+        fi
     else
         echo "    [??]     ${rom} — searching \$HOME..."
         hit="$(find_file "$rom")"
         if [[ -n "$hit" ]]; then
             found "${hit} -> ${ROM_DIR}/"
-            cp "$hit" "${ROM_DIR}/${rom}"
+            header="$(head -c 11 "$hit" 2>/dev/null || true)"
+            if [[ "$header" == "$CLOANTO_HEADER" ]]; then
+                echo "    [DECRYPT] ${rom} — Cloanto-encrypted..."
+                key="$(find_file "rom.key")"
+                if [[ -z "$key" ]]; then
+                    warn "rom.key not found — cannot decrypt ${rom}"
+                    MISSING_ROMS+=("$rom")
+                else
+                    decrypt_rom "$hit" "${ROM_DIR}/${rom}" "$key"
+                    ok "${rom} (decrypted)"
+                fi
+            else
+                cp "$hit" "${ROM_DIR}/${rom}"
+                ok "${rom} (copied)"
+            fi
         else
             miss "${rom}"
             MISSING_ROMS+=("$rom")
