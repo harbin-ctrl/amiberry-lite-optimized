@@ -74,6 +74,7 @@ SDL_Surface* amiga_surface = nullptr;
 #ifdef USE_OPENGL
 SDL_GLContext gl_context;
 crtemu_t* crtemu_tv = nullptr;
+static int last_crtemu_w = 0, last_crtemu_h = 0;
 
 bool set_opengl_attributes();
 bool init_opengl_context(SDL_Window* window);
@@ -338,8 +339,6 @@ static void SDL2_init()
 #ifdef USE_OPENGL
 	if (gl_context == nullptr)
 		init_opengl_context(mon->amiga_window);
-	else if (gl_context && mon->amiga_window)
-		SDL_GL_MakeCurrent(mon->amiga_window, gl_context);
 
 	// Enable vsync
 	if (SDL_GL_SetSwapInterval(1) < 0)
@@ -371,13 +370,25 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 	if (w < 0 || h < 0)
 		return crtemu_tv != nullptr;
 	write_log("DEBUG: SDL2_alloctexture called with w=%d, h=%d\n", w, h);
-	if (crtemu_tv)
+	// Only destroy+recreate when dimensions changed or crtemu never created.
+	// Forced calls (force=true, ~1Hz) that arrive with same dimensions must
+	// not teardown a working shader — that caused 1Hz context-steal popping.
+	const bool dims_changed = (w != last_crtemu_w || h != last_crtemu_h);
+	if (crtemu_tv && dims_changed)
 		destroy_crtemu();
 	if (crtemu_tv == nullptr) {
+		// Re-assert our GL context. The GUI SDL_Renderer may have stolen it
+		// between init_opengl_context and this first crtemu_create call.
+		if (gl_context)
+			SDL_GL_MakeCurrent(AMonitors[monid].amiga_window, gl_context);
 		const int crt_type = get_crtemu_type(amiberry_options.shader);
 		crtemu_tv = crtemu_create(static_cast<crtemu_type_t>(crt_type), nullptr);
 		write_log("DEBUG: crtemu_create(type=%d shader='%s') -> %s\n",
 			crt_type, amiberry_options.shader, crtemu_tv ? "OK" : "FAILED");
+		if (crtemu_tv) {
+			last_crtemu_w = w;
+			last_crtemu_h = h;
+		}
 	}
 	if (crtemu_tv)
 		crtemu_frame(crtemu_tv, (CRTEMU_U32*)amiga_surface->pixels, w, h);
@@ -3234,6 +3245,8 @@ void destroy_crtemu()
 	{
 		crtemu_destroy(crtemu_tv);
 		crtemu_tv = nullptr;
+		last_crtemu_w = 0;
+		last_crtemu_h = 0;
 	}
 #endif
 }
