@@ -2746,6 +2746,14 @@ void graphics_leave()
 	struct AmigaMonitor* mon = &AMonitors[0];
 	close_windows(mon);
 
+#ifdef USE_OPENGL
+	if (gl_context != nullptr)
+	{
+		SDL_GL_DeleteContext(gl_context);
+		gl_context = nullptr;
+	}
+#endif
+
 	if (kmsdrm_detected)
 	{
 		if (mon->amiga_renderer)
@@ -2778,6 +2786,9 @@ void close_windows(struct AmigaMonitor* mon)
 
 #ifdef USE_OPENGL
 	destroy_crtemu();
+	// GL context is intentionally kept alive here so the next emulation session
+	// can reuse it without triggering Panfrost's second-context compat fallback.
+	// It is deleted in graphics_leave() when the window itself is torn down.
 #else
 	if (amiga_texture)
 	{
@@ -2786,13 +2797,7 @@ void close_windows(struct AmigaMonitor* mon)
 	}
 #endif
 
-#ifdef USE_OPENGL
-	if (gl_context != nullptr)
-	{
-		SDL_GL_DeleteContext(gl_context);
-		gl_context = nullptr;
-	}
-#else
+#ifndef USE_OPENGL
 	if (mon->amiga_renderer && !kmsdrm_detected)
 	{
 		SDL_DestroyRenderer(mon->amiga_renderer);
