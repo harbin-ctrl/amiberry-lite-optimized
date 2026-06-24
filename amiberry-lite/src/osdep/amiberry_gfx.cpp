@@ -338,6 +338,8 @@ static void SDL2_init()
 #ifdef USE_OPENGL
 	if (gl_context == nullptr)
 		init_opengl_context(mon->amiga_window);
+	else if (gl_context && mon->amiga_window)
+		SDL_GL_MakeCurrent(mon->amiga_window, gl_context);
 
 	// Enable vsync
 	if (SDL_GL_SetSwapInterval(1) < 0)
@@ -369,10 +371,6 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 	if (w < 0 || h < 0)
 		return crtemu_tv != nullptr;
 	write_log("DEBUG: SDL2_alloctexture called with w=%d, h=%d\n", w, h);
-	// Re-assert our GL context before any GL work. The GUI SDL_Renderer can
-	// steal the current context between init_opengl_context and here.
-	if (gl_context)
-		SDL_GL_MakeCurrent(AMonitors[monid].amiga_window, gl_context);
 	if (crtemu_tv)
 		destroy_crtemu();
 	if (crtemu_tv == nullptr) {
