@@ -3,23 +3,26 @@
 # Commodore 1084S CRT shader, on Raspberry Pi, Orange Pi, or any similar SBC.
 #
 # What this script does, in order:
-#   1. Installs missing build packages via apt-get
-#   2. Creates the expected Amiberry-Lite directory tree under $HOME
-#   3. Clones Amiberry Lite v5.9.2 from GitHub (skips if already present)
-#   4. Applies the 1084S shader modifications (crtemu.h + amiberry_gfx.cpp)
-#   5. Builds with OpenGL enabled (USE_OPENGL=ON)
-#   6. Verifies the shader is compiled into the binary
-#   7. Checks required ROM files; searches all of $HOME if not in place,
-#      copies them into ~/Amiberry/ROMs/ when found
-#   8. Checks required hard drive images; searches all of $HOME if absent,
+#   1. Removes any conflicting full-Amiberry (dpkg) installation, its apt
+#      source, and keyring, so only our build-from-source version remains
+#   2. (reserved — old step 1 absorbed into 3)
+#   3. Installs missing build packages via apt-get
+#   4. Creates the expected Amiberry-Lite directory tree under $HOME
+#   5. Clones Amiberry Lite v5.9.2 from GitHub (skips if already present)
+#   6. Applies the 1084S shader modifications (crtemu.h + amiberry_gfx.cpp)
+#   7. Builds with OpenGL enabled (USE_OPENGL=ON)
+#   8. Verifies the shader is compiled into the binary
+#   9. Checks required ROM files; searches all of $HOME if not in place,
+#      copies them into ~/Amiberry-Lite/roms/ when found
+#  10. Checks required hard drive images; searches all of $HOME if absent,
 #      copies them into ~/Amiberry-Lite/harddrives/ when found
-#   9. Installs the six stock machine configs (A2000/A1200/A3000, PAL+NTSC),
+#  11. Installs the six stock machine configs (A2000/A1200/A3000, PAL+NTSC),
 #      rewriting /home/pi -> $HOME in all paths
-#  10. Sets shader=1084 in ~/.config/amiberry-lite/amiberry.conf
-#  11. (--install only) Runs cmake --install so the binary AND data directory
+#  12. Sets shader=1084 in ~/.config/amiberry-lite/amiberry.conf
+#  13. (--install only) Runs cmake --install so the binary AND data directory
 #      (fonts, themes, icons) land in the right system locations — skipping
 #      this step causes "No usable font found in theme" on first launch
-#  12. Exits with a clear error listing any ROMs or hard drive images that
+#  14. Exits with a clear error listing any ROMs or hard drive images that
 #      could not be found anywhere under $HOME
 #
 # Usage:
@@ -40,7 +43,7 @@ AMIBERRY_SRC="amiberry-lite-${AMIBERRY_TAG}"   # cloned into $PWD
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Paths under $HOME — no /home/pi anywhere below this line
-ROM_DIR="${HOME}/Amiberry/ROMs"
+ROM_DIR="${HOME}/Amiberry-Lite/roms"
 LITE_DIR="${HOME}/Amiberry-Lite"
 CONF_DIR="${LITE_DIR}/conf"
 HDF_DIR="${LITE_DIR}/harddrives"
@@ -82,7 +85,28 @@ find_file() {
         2>/dev/null | head -1
 }
 
-# ── 1. Dependencies ───────────────────────────────────────────────────────────
+# ── 1. Remove conflicting amiberry (full) installations ──────────────────────
+
+info "Removing full Amiberry (dpkg) if installed..."
+
+if dpkg -s amiberry &>/dev/null; then
+    sudo apt-get purge -y amiberry
+    ok "amiberry dpkg purged"
+else
+    ok "amiberry dpkg not present"
+fi
+
+for f in \
+    /etc/apt/sources.list.d/amiberry.sources \
+    /usr/share/keyrings/amiberry-archive-keyring.gpg \
+    /usr/bin/amiberry-lite; do
+    if [[ -e "$f" ]]; then
+        sudo rm -f "$f"
+        ok "removed $f"
+    fi
+done
+
+# ── 3. Dependencies ───────────────────────────────────────────────────────────
 
 info "Checking build dependencies..."
 
@@ -108,7 +132,7 @@ else
     info "All build packages present."
 fi
 
-# ── 2. Directory structure ────────────────────────────────────────────────────
+# ── 4. Directory structure ────────────────────────────────────────────────────
 
 info "Creating directory structure under ${HOME}..."
 
@@ -131,7 +155,7 @@ for dir in \
     fi
 done
 
-# ── 3. Clone ──────────────────────────────────────────────────────────────────
+# ── 5. Clone ──────────────────────────────────────────────────────────────────
 
 if [[ -d "$AMIBERRY_SRC" ]]; then
     info "Source directory '${AMIBERRY_SRC}' already exists — skipping clone."
@@ -140,14 +164,14 @@ else
     git clone --depth=1 --branch "${AMIBERRY_TAG}" "${AMIBERRY_REPO}" "${AMIBERRY_SRC}"
 fi
 
-# ── 4. Apply shader patch ─────────────────────────────────────────────────────
+# ── 6. Apply shader patch ─────────────────────────────────────────────────────
 
 info "Applying 1084S shader modifications..."
 cp "${SCRIPT_DIR}/src/osdep/crtemu.h"         "${AMIBERRY_SRC}/src/osdep/crtemu.h"
 cp "${SCRIPT_DIR}/src/osdep/amiberry_gfx.cpp" "${AMIBERRY_SRC}/src/osdep/amiberry_gfx.cpp"
 ok "crtemu.h + amiberry_gfx.cpp applied"
 
-# ── 5. Build ──────────────────────────────────────────────────────────────────
+# ── 7. Build ──────────────────────────────────────────────────────────────────
 
 BUILD_DIR="${AMIBERRY_SRC}/build"
 
@@ -164,7 +188,7 @@ cmake --build "${BUILD_DIR}" --parallel "$(nproc)"
 BINARY="${BUILD_DIR}/amiberry-lite"
 info "Build complete: ${BINARY} ($(du -h "$BINARY" | cut -f1))"
 
-# ── 6. Verify shader compiled in ─────────────────────────────────────────────
+# ── 8. Verify shader compiled in ─────────────────────────────────────────────
 
 if grep -qa "1084" "${BINARY}" && grep -qa "blur_luma" "${BINARY}"; then
     info "1084S shader verified in binary."
@@ -173,7 +197,7 @@ else
     exit 1
 fi
 
-# ── 7. ROMs ───────────────────────────────────────────────────────────────────
+# ── 9. ROMs ───────────────────────────────────────────────────────────────────
 
 info "Checking ROMs in ${ROM_DIR}..."
 
@@ -194,7 +218,7 @@ for rom in "${REQUIRED_ROMS[@]}"; do
     fi
 done
 
-# ── 8. Hard drive images ──────────────────────────────────────────────────────
+# ── 10. Hard drive images ─────────────────────────────────────────────────────
 
 info "Checking hard drive images in ${HDF_DIR}..."
 
@@ -216,7 +240,7 @@ for hdf in "${REQUIRED_HDFS[@]}"; do
     fi
 done
 
-# ── 9. Configs ────────────────────────────────────────────────────────────────
+# ── 11. Configs ───────────────────────────────────────────────────────────────
 
 info "Installing configs to ${CONF_DIR}..."
 
@@ -229,7 +253,7 @@ for src in "${SCRIPT_DIR}/configs/"*.uae; do
     ok "${name}"
 done
 
-# ── 10. amiberry.conf — set shader=1084 and fix paths ────────────────────────
+# ── 12. amiberry.conf — set shader=1084 and fix paths ────────────────────────
 
 if [[ -f "$AMIBERRY_CONF" ]]; then
     info "Updating ${AMIBERRY_CONF}..."
@@ -244,11 +268,13 @@ if [[ -f "$AMIBERRY_CONF" ]]; then
         ok "shader=1084 (appended)"
     fi
 else
-    info "${AMIBERRY_CONF} not found — it will be created by amiberry-lite on first run."
-    echo "    Remember to add:  shader=1084"
+    info "Creating ${AMIBERRY_CONF} with shader=1084..."
+    mkdir -p "$(dirname "$AMIBERRY_CONF")"
+    printf 'shader=1084\n' > "$AMIBERRY_CONF"
+    ok "shader=1084 (created)"
 fi
 
-# ── 11. Install (optional) ────────────────────────────────────────────────────
+# ── 13. Install (optional) ────────────────────────────────────────────────────
 #
 # Uses "cmake --install" rather than a bare binary copy so that the data
 # directory (fonts, themes, icons, whdboot, controllers) is installed to
@@ -267,7 +293,7 @@ if [[ "$INSTALL" == true ]]; then
     ok "Installed: data   -> /usr/share/amiberry-lite/"
 fi
 
-# ── 12. Final report ──────────────────────────────────────────────────────────
+# ── 14. Final report ──────────────────────────────────────────────────────────
 
 ERRORS=()
 if [[ ${#MISSING_ROMS[@]} -gt 0 ]]; then
