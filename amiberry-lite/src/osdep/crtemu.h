@@ -359,11 +359,11 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"attribute vec4 pos;"
-			"varying vec2 uv;"
+			"in vec4 pos;"
+			"out vec2 uv;"
 			""
 			"void main( void )"
 			"    {"
@@ -375,10 +375,11 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			"\n"
-			"varying vec2 uv;\n"
+			"in vec2 uv;\n"
+			"out vec4 fragColor;\n"
 			"\n"
 			"uniform vec3 modulate;\n"
 			"uniform vec2 resolution;\n"
@@ -396,13 +397,13 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
             "    {\n"
             "    float borderdist = .502-max(abs(.5-tc.x), abs(.5-tc.y));\n"
             "    float borderfade = clamp(borderdist * 400.0, 0.0, 1.0);\n"
-            "    return texture2D( samp, tc ) * borderfade;\n"
+            "    return texture( samp, tc ) * borderfade;\n"
             "    }\n"
             "#define texture2D texture2Dborder\n"
 			#endif
 			"vec3 tsample( sampler2D samp, vec2 tc, float offs, vec2 resolution )\n"
 			"    {\n"
-			"    vec3 s = pow( abs( texture2D( samp, vec2( tc.x, 1.0-tc.y ) ).rgb), vec3( 2.2 ) );\n"
+			"    vec3 s = pow( abs( texture( samp, vec2( tc.x, 1.0-tc.y ) ).rgb), vec3( 2.2 ) );\n"
 			"    return s*vec3(1.25);\n"
 			"    }"
 			"\n"
@@ -500,11 +501,11 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 			"    col *= modulate;\n"
 			"    /* Frame */\n"
 			"    vec2 fuv=vec2( uv.x, 1.0 - uv.y);\n"
-			"    vec4 f=texture2D(frametexture,fuv);\n"
+			"    vec4 f=texture(frametexture,fuv);\n"
 			"    vec3 fr = mix( max( col, 0.0), f.xyz, f.w);\n"
 			"    col = mix( col, fr, vec3( use_frame ) );\n"
 			"    \n"
-			"    gl_FragColor = vec4( col, 1.0 );\n"
+			"    fragColor = vec4( col, 1.0 );\n"
 			"    }\n"
 			"\n";
 
@@ -512,26 +513,27 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform vec2 blur;"
-			"uniform sampler2D texture;"
+			"uniform sampler2D tex;"
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 sum = texture2D( texture, uv ) * 0.2270270270;"
-			"    sum += texture2D(texture, vec2( uv.x - 4.0 * blur.x, uv.y - 4.0 * blur.y ) ) * 0.0162162162;"
-			"    sum += texture2D(texture, vec2( uv.x - 3.0 * blur.x, uv.y - 3.0 * blur.y ) ) * 0.0540540541;"
-			"    sum += texture2D(texture, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.1216216216;"
-			"    sum += texture2D(texture, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.1945945946;"
-			"    sum += texture2D(texture, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.1945945946;"
-			"    sum += texture2D(texture, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.1216216216;"
-			"    sum += texture2D(texture, vec2( uv.x + 3.0 * blur.x, uv.y + 3.0 * blur.y ) ) * 0.0540540541;"
-			"    sum += texture2D(texture, vec2( uv.x + 4.0 * blur.x, uv.y + 4.0 * blur.y ) ) * 0.0162162162;"
-			"    gl_FragColor = sum;"
+			"    vec4 sum = texture( tex, uv ) * 0.2270270270;"
+			"    sum += texture(tex, vec2( uv.x - 4.0 * blur.x, uv.y - 4.0 * blur.y ) ) * 0.0162162162;"
+			"    sum += texture(tex, vec2( uv.x - 3.0 * blur.x, uv.y - 3.0 * blur.y ) ) * 0.0540540541;"
+			"    sum += texture(tex, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.1216216216;"
+			"    sum += texture(tex, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.1945945946;"
+			"    sum += texture(tex, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.1945945946;"
+			"    sum += texture(tex, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.1216216216;"
+			"    sum += texture(tex, vec2( uv.x + 3.0 * blur.x, uv.y + 3.0 * blur.y ) ) * 0.0540540541;"
+			"    sum += texture(tex, vec2( uv.x + 4.0 * blur.x, uv.y + 4.0 * blur.y ) ) * 0.0162162162;"
+			"    fragColor = sum;"
 			"    }   "
 			"";
 
@@ -540,10 +542,11 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -551,10 +554,10 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.96 );"
+			"    fragColor = max( a, b * 0.96 );"
 			"    }   "
 			"";
 
@@ -562,10 +565,11 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -573,10 +577,10 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.32 );"
+			"    fragColor = max( a, b * 0.32 );"
 			"    }   "
 			"";
 
@@ -584,16 +588,17 @@ bool crtemu_shaders_tv( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			""
 			"void main( void )"
 			"    {"
-			"    gl_FragColor = texture2D( tex0, uv );"
+			"    fragColor = texture( tex0, uv );"
 			"    }   "
 			"";
 
@@ -621,11 +626,11 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"attribute vec4 pos;"
-			"varying vec2 uv;"
+			"in vec4 pos;"
+			"out vec2 uv;"
 			""
 			"void main( void )"
 			"    {"
@@ -637,10 +642,11 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			"\n"
-			"varying vec2 uv;\n"
+			"in vec2 uv;\n"
+			"out vec4 fragColor;\n"
 			"\n"
 			"uniform vec3 modulate;\n"
 			"uniform vec2 resolution;\n"
@@ -658,14 +664,14 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
             "    {\n"
             "    float borderdist = .502-max(abs(.5-tc.x), abs(.5-tc.y));\n"
             "    float borderfade = clamp(borderdist * 400.0, 0.0, 1.0);\n"
-            "    return texture2D( samp, tc ) * borderfade;\n"
+            "    return texture( samp, tc ) * borderfade;\n"
             "    }\n"
             "#define texture2D texture2Dborder\n"
 			#endif
 			"vec3 tsample( sampler2D samp, vec2 tc, float offs, vec2 resolution )\n"
 			"    {\n"
 			"    tc = tc * vec2(1.156, 1.156) - vec2( 0.078 + 0.003, 0.078 );\n"
-			"    vec3 s = pow( abs( texture2D( samp, vec2( tc.x, 1.0-tc.y ) ).rgb), vec3( 2.2 ) );\n"
+			"    vec3 s = pow( abs( texture( samp, vec2( tc.x, 1.0-tc.y ) ).rgb), vec3( 2.2 ) );\n"
 			"    return s*vec3(1.25);\n"
 			"    }\n"
 			"\n"
@@ -764,10 +770,10 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 			"    col*=modulate; \n"
 			"    /* Frame */\n"
 			"   vec2 fuv=vec2( uv.x, 1.0 - uv.y);\n"
-			"    vec4 f=texture2D(frametexture, fuv);\n"
+			"    vec4 f=texture(frametexture, fuv);\n"
 			"    col = mix( col, mix( max( col, 0.0), f.xyz, f.w), vec3( use_frame) );\n"
 			"    \n"
-			"   gl_FragColor = vec4( col, 1.0 );\n"
+			"   fragColor = vec4( col, 1.0 );\n"
 			"   }\n"
 			"   \n"
 			"";
@@ -776,26 +782,27 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform vec2 blur;"
-			"uniform sampler2D texture;"
+			"uniform sampler2D tex;"
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 sum = texture2D( texture, uv ) * 0.2270270270;"
-			"    sum += texture2D(texture, vec2( uv.x - 4.0 * blur.x, uv.y - 4.0 * blur.y ) ) * 0.0162162162;"
-			"    sum += texture2D(texture, vec2( uv.x - 3.0 * blur.x, uv.y - 3.0 * blur.y ) ) * 0.0540540541;"
-			"    sum += texture2D(texture, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.1216216216;"
-			"    sum += texture2D(texture, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.1945945946;"
-			"    sum += texture2D(texture, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.1945945946;"
-			"    sum += texture2D(texture, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.1216216216;"
-			"    sum += texture2D(texture, vec2( uv.x + 3.0 * blur.x, uv.y + 3.0 * blur.y ) ) * 0.0540540541;"
-			"    sum += texture2D(texture, vec2( uv.x + 4.0 * blur.x, uv.y + 4.0 * blur.y ) ) * 0.0162162162;"
-			"    gl_FragColor = sum;"
+			"    vec4 sum = texture( tex, uv ) * 0.2270270270;"
+			"    sum += texture(tex, vec2( uv.x - 4.0 * blur.x, uv.y - 4.0 * blur.y ) ) * 0.0162162162;"
+			"    sum += texture(tex, vec2( uv.x - 3.0 * blur.x, uv.y - 3.0 * blur.y ) ) * 0.0540540541;"
+			"    sum += texture(tex, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.1216216216;"
+			"    sum += texture(tex, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.1945945946;"
+			"    sum += texture(tex, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.1945945946;"
+			"    sum += texture(tex, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.1216216216;"
+			"    sum += texture(tex, vec2( uv.x + 3.0 * blur.x, uv.y + 3.0 * blur.y ) ) * 0.0540540541;"
+			"    sum += texture(tex, vec2( uv.x + 4.0 * blur.x, uv.y + 4.0 * blur.y ) ) * 0.0162162162;"
+			"    fragColor = sum;"
 			"    }   "
 			"";
 
@@ -804,10 +811,11 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -815,10 +823,10 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.96 );"
+			"    fragColor = max( a, b * 0.96 );"
 			"    }   "
 			"";
 
@@ -826,10 +834,11 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -837,10 +846,10 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.24 );"
+			"    fragColor = max( a, b * 0.24 );"
 			"    }   "
 			"";
 
@@ -848,16 +857,17 @@ bool crtemu_shaders_pc( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			""
 			"void main( void )"
 			"    {"
-			"    gl_FragColor = texture2D( tex0, uv );"
+			"    fragColor = texture( tex0, uv );"
 			"    }   "
 			"";
 
@@ -885,11 +895,11 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"attribute vec4 pos;"
-			"varying vec2 uv;"
+			"in vec4 pos;"
+			"out vec2 uv;"
 			""
 			"void main( void )"
 			"    {"
@@ -901,10 +911,11 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			"\n"
-			"varying vec2 uv;\n"
+			"in vec2 uv;\n"
+			"out vec4 fragColor;\n"
 			"\n"
 			"uniform vec3 modulate;\n"
 			"uniform vec2 resolution;\n"
@@ -922,13 +933,13 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 				 "    {\n"
 				 "    float borderdist = .502-max(abs(.5-tc.x), abs(.5-tc.y));\n"
 				 "    float borderfade = clamp(borderdist * 400.0, 0.0, 1.0);\n"
-				 "    return texture2D( samp, tc ) * borderfade;\n"
+				 "    return texture( samp, tc ) * borderfade;\n"
 				 "    }\n"
 				 "#define texture2D texture2Dborder\n"
 			 #endif*/
 			"vec3 tsample( sampler2D samp, vec2 tc )\n"
 			"    {\n"
-			"    vec3 s = pow( abs( texture2D( samp, vec2( tc.x, 1.0-tc.y ) ).rgb), vec3( 2.2 ) );\n"
+			"    vec3 s = pow( abs( texture( samp, vec2( tc.x, 1.0-tc.y ) ).rgb), vec3( 2.2 ) );\n"
 			"    return s;\n"
 			"    }\n"
 			"\n"
@@ -963,7 +974,7 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 			"    col = mix( pow( col, vec3(1.0 / 2.2) ), filmic( col ), 0.5 );\n"
 			"\n"
 			"    col*=modulate; \n"
-			"    gl_FragColor = vec4( col, 1.0 );\n"
+			"    fragColor = vec4( col, 1.0 );\n"
 			"   }\n"
 			"   \n"
 			"";
@@ -972,26 +983,27 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform vec2 blur;"
-			"uniform sampler2D texture;"
+			"uniform sampler2D tex;"
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 sum = texture2D( texture, uv ) * 0.2270270270;"
-			"    sum += texture2D(texture, vec2( uv.x - 4.0 * blur.x, uv.y - 4.0 * blur.y ) ) * 0.0162162162;"
-			"    sum += texture2D(texture, vec2( uv.x - 3.0 * blur.x, uv.y - 3.0 * blur.y ) ) * 0.0540540541;"
-			"    sum += texture2D(texture, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.1216216216;"
-			"    sum += texture2D(texture, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.1945945946;"
-			"    sum += texture2D(texture, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.1945945946;"
-			"    sum += texture2D(texture, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.1216216216;"
-			"    sum += texture2D(texture, vec2( uv.x + 3.0 * blur.x, uv.y + 3.0 * blur.y ) ) * 0.0540540541;"
-			"    sum += texture2D(texture, vec2( uv.x + 4.0 * blur.x, uv.y + 4.0 * blur.y ) ) * 0.0162162162;"
-			"    gl_FragColor = sum;"
+			"    vec4 sum = texture( tex, uv ) * 0.2270270270;"
+			"    sum += texture(tex, vec2( uv.x - 4.0 * blur.x, uv.y - 4.0 * blur.y ) ) * 0.0162162162;"
+			"    sum += texture(tex, vec2( uv.x - 3.0 * blur.x, uv.y - 3.0 * blur.y ) ) * 0.0540540541;"
+			"    sum += texture(tex, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.1216216216;"
+			"    sum += texture(tex, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.1945945946;"
+			"    sum += texture(tex, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.1945945946;"
+			"    sum += texture(tex, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.1216216216;"
+			"    sum += texture(tex, vec2( uv.x + 3.0 * blur.x, uv.y + 3.0 * blur.y ) ) * 0.0540540541;"
+			"    sum += texture(tex, vec2( uv.x + 4.0 * blur.x, uv.y + 4.0 * blur.y ) ) * 0.0162162162;"
+			"    fragColor = sum;"
 			"    }   "
 			"";
 
@@ -1000,10 +1012,11 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -1011,10 +1024,10 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.96 );"
+			"    fragColor = max( a, b * 0.96 );"
 			"    }   "
 			"";
 
@@ -1022,10 +1035,11 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -1033,10 +1047,10 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.2 );"
+			"    fragColor = max( a, b * 0.2 );"
 			"    }   "
 			"";
 
@@ -1044,16 +1058,17 @@ bool crtemu_shaders_lite( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 			#endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			""
 			"void main( void )"
 			"    {"
-			"    gl_FragColor = texture2D( tex0, uv );"
+			"    fragColor = texture( tex0, uv );"
 			"    }   "
 			"";
 
@@ -1082,11 +1097,11 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 #endif
 			""
-			"attribute vec4 pos;"
-			"varying vec2 uv;"
+			"in vec4 pos;"
+			"out vec2 uv;"
 			""
 			"void main( void )"
 			"    {"
@@ -1099,10 +1114,11 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 #endif
 			"\n"
-			"varying vec2 uv;\n"
+			"in vec2 uv;\n"
+			"out vec4 fragColor;\n"
 			"\n"
 			"uniform vec3 modulate;\n"
 			"uniform vec2 resolution;\n"
@@ -1132,11 +1148,11 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 			"void main(void) {\n"
 			"    vec2 curved_uv = mix(curve(uv), uv, 0.80);\n"
 			"\n"
-			"    vec3 col = texture2D(backbuffer, vec2(curved_uv.x, 1.0 - curved_uv.y)).rgb;\n"
+			"    vec3 col = texture(backbuffer, vec2(curved_uv.x, 1.0 - curved_uv.y)).rgb;\n"
 			"    col *= col;\n"
 			"    col *= 1.25;\n"
 			"\n"
-			"    vec3 blur = texture2D(blurbuffer, vec2(curved_uv.x, 1.0 - curved_uv.y)).rgb;\n"
+			"    vec3 blur = texture(blurbuffer, vec2(curved_uv.x, 1.0 - curved_uv.y)).rgb;\n"
 			"    blur *= blur;\n"
 			"    float blur_luma = dot(blur, vec3(0.299, 0.587, 0.114));\n"
 			"    col += blur * vec3(1.1, 1.0, 0.85) * 0.10 * clamp(blur_luma * 2.0, 0.0, 1.0);\n"
@@ -1172,10 +1188,10 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 			"    col *= modulate;\n"
 			"\n"
 			"    vec2 fuv = vec2(uv.x, 1.0 - uv.y);\n"
-			"    vec4 f = texture2D(frametexture, fuv);\n"
+			"    vec4 f = texture(frametexture, fuv);\n"
 			"    col = mix(col, f.rgb, f.a * use_frame);\n"
 			"\n"
-			"    gl_FragColor = vec4(col, 1.0);\n"
+			"    fragColor = vec4(col, 1.0);\n"
 			"}\n"
 			"";
 
@@ -1183,22 +1199,23 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 #endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform vec2 blur;"
-			"uniform sampler2D texture;"
+			"uniform sampler2D tex;"
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 sum = texture2D( texture, uv ) * 0.29412;"
-			"    sum += texture2D(texture, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.08824;"
-			"    sum += texture2D(texture, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.20588;"
-			"    sum += texture2D(texture, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.20588;"
-			"    sum += texture2D(texture, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.08824;"
-			"    gl_FragColor = sum;"
+			"    vec4 sum = texture( tex, uv ) * 0.29412;"
+			"    sum += texture(tex, vec2( uv.x - 2.0 * blur.x, uv.y - 2.0 * blur.y ) ) * 0.08824;"
+			"    sum += texture(tex, vec2( uv.x - 1.0 * blur.x, uv.y - 1.0 * blur.y ) ) * 0.20588;"
+			"    sum += texture(tex, vec2( uv.x + 1.0 * blur.x, uv.y + 1.0 * blur.y ) ) * 0.20588;"
+			"    sum += texture(tex, vec2( uv.x + 2.0 * blur.x, uv.y + 2.0 * blur.y ) ) * 0.08824;"
+			"    fragColor = sum;"
 			"    }   "
 			"";
 
@@ -1206,10 +1223,11 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 #endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -1217,10 +1235,10 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.96 );"
+			"    fragColor = max( a, b * 0.96 );"
 			"    }   "
 			"";
 
@@ -1228,10 +1246,11 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 #endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			"uniform sampler2D tex1;"
@@ -1239,10 +1258,10 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 			""
 			"void main( void )"
 			"    {"
-			"    vec4 a = texture2D( tex0, uv ) * vec4( modulate );"
-			"    vec4 b = texture2D( tex1, uv );"
+			"    vec4 a = texture( tex0, uv ) * vec4( modulate );"
+			"    vec4 b = texture( tex1, uv );"
 			""
-			"    gl_FragColor = max( a, b * 0.24 );"
+			"    fragColor = max( a, b * 0.24 );"
 			"    }   "
 			"";
 
@@ -1250,16 +1269,17 @@ bool crtemu_shaders_1084( crtemu_t* crtemu ) {
 #ifdef CRTEMU_WEBGL
 			"precision highp float;\n\n"
 #else
-			"#version 120\n\n"
+			"#version 130\n\n"
 #endif
 			""
-			"varying vec2 uv;"
+			"in vec2 uv;"
+			"out vec4 fragColor;"
 			""
 			"uniform sampler2D tex0;"
 			""
 			"void main( void )"
 			"    {"
-			"    gl_FragColor = texture2D( tex0, uv );"
+			"    fragColor = texture( tex0, uv );"
 			"    }   "
 			"";
 
@@ -1623,7 +1643,7 @@ static void crtemu_internal_blur( crtemu_t* crtemu, CRTEMU_GLuint source, CRTEMU
 	crtemu->BindFramebuffer( CRTEMU_GL_FRAMEBUFFER, blurbuffer_b );
 	crtemu->UseProgram( crtemu->blur_shader );
 	crtemu->Uniform2f( crtemu->GetUniformLocation( crtemu->blur_shader, "blur" ), r / (float) width, 0 );
-	crtemu->Uniform1i( crtemu->GetUniformLocation( crtemu->blur_shader, "texture" ), 0 );
+	crtemu->Uniform1i( crtemu->GetUniformLocation( crtemu->blur_shader, "tex" ), 0 );
 	crtemu->ActiveTexture( CRTEMU_GL_TEXTURE0 );
 	crtemu->BindTexture( CRTEMU_GL_TEXTURE_2D, source );
 	crtemu->TexParameteri( CRTEMU_GL_TEXTURE_2D, CRTEMU_GL_TEXTURE_MIN_FILTER, CRTEMU_GL_LINEAR );
@@ -1636,7 +1656,7 @@ static void crtemu_internal_blur( crtemu_t* crtemu, CRTEMU_GLuint source, CRTEMU
 	crtemu->BindFramebuffer( CRTEMU_GL_FRAMEBUFFER, blurbuffer_a );
 	crtemu->UseProgram( crtemu->blur_shader );
 	crtemu->Uniform2f( crtemu->GetUniformLocation( crtemu->blur_shader, "blur" ), 0, r / (float) height );
-	crtemu->Uniform1i( crtemu->GetUniformLocation( crtemu->blur_shader, "texture" ), 0 );
+	crtemu->Uniform1i( crtemu->GetUniformLocation( crtemu->blur_shader, "tex" ), 0 );
 	crtemu->ActiveTexture( CRTEMU_GL_TEXTURE0 );
 	crtemu->BindTexture( CRTEMU_GL_TEXTURE_2D, blurtexture_b );
 	crtemu->TexParameteri( CRTEMU_GL_TEXTURE_2D, CRTEMU_GL_TEXTURE_MIN_FILTER, CRTEMU_GL_LINEAR );

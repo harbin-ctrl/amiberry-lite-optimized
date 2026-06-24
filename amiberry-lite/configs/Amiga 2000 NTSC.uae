@@ -1,7 +1,7 @@
 config_description=Amiga 2000 stock NTSC (Kickstart 1.3, OCS, 1MB chip, WB 1.3.5)
 config_hardware=true
 config_host=true
-amiberry.rom_path=/home/pi/Amiberry/ROMs/
+amiberry.rom_path=/home/pi/Amiberry-Lite/roms/
 amiberry.floppy_path=/home/pi/Amiberry-Lite/floppies/
 amiberry.hardfile_path=/home/pi/Amiberry-Lite/harddrives/
 amiberry.cd_path=/home/pi/Amiberry-Lite/cdroms/
