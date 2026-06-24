@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
-# build.sh — Build Amiberry Lite with the 1084S CRT shader and set up the
-# environment on a new Pi (Raspberry Pi, Orange Pi, or similar SBC).
+# build.sh — Full environment setup and build for Amiberry Lite with the
+# Commodore 1084S CRT shader, on Raspberry Pi, Orange Pi, or any similar SBC.
+#
+# What this script does, in order:
+#   1. Installs missing build packages via apt-get
+#   2. Creates the expected Amiberry-Lite directory tree under $HOME
+#   3. Clones Amiberry Lite v5.9.2 from GitHub (skips if already present)
+#   4. Applies the 1084S shader modifications (crtemu.h + amiberry_gfx.cpp)
+#   5. Builds with OpenGL enabled (USE_OPENGL=ON)
+#   6. Verifies the shader is compiled into the binary
+#   7. Checks required ROM files; searches all of $HOME if not in place,
+#      copies them into ~/Amiberry/ROMs/ when found
+#   8. Checks required hard drive images; searches all of $HOME if absent,
+#      copies them into ~/Amiberry-Lite/harddrives/ when found
+#   9. Installs the six stock machine configs (A2000/A1200/A3000, PAL+NTSC),
+#      rewriting /home/pi -> $HOME in all paths
+#  10. Sets shader=1084 in ~/.config/amiberry-lite/amiberry.conf
+#  11. (--install only) Runs cmake --install so the binary AND data directory
+#      (fonts, themes, icons) land in the right system locations — skipping
+#      this step causes "No usable font found in theme" on first launch
+#  12. Exits with a clear error listing any ROMs or hard drive images that
+#      could not be found anywhere under $HOME
 #
 # Usage:
-#   ./build.sh              # build only
-#   ./build.sh --install    # build and install to /usr/bin/amiberry-lite
+#   ./build.sh              # build only; run binary from build dir
+#   ./build.sh --install    # build + install system-wide
 #
-# Does NOT assume /home/pi. Uses $HOME throughout.
+# Does NOT assume /home/pi — uses $HOME throughout.
 # Tested on Raspberry Pi 400, Debian Bookworm (aarch64),
 # Mesa 25.0.7 / V3D 4.2 / OpenGL 3.1 / GLSL 1.40.
 
@@ -228,7 +248,12 @@ else
     echo "    Remember to add:  shader=1084"
 fi
 
-# ── 11. Install binary (optional) ─────────────────────────────────────────────
+# ── 11. Install (optional) ────────────────────────────────────────────────────
+#
+# Uses "cmake --install" rather than a bare binary copy so that the data
+# directory (fonts, themes, icons, whdboot, controllers) is installed to
+# /usr/share/amiberry-lite/ alongside the binary.  Without the data dir the
+# GUI throws "No usable font found in theme" on first launch.
 
 if [[ "$INSTALL" == true ]]; then
     DEST="/usr/bin/amiberry-lite"
@@ -236,9 +261,10 @@ if [[ "$INSTALL" == true ]]; then
         info "Backing up existing binary to ${DEST}.bak"
         sudo cp "$DEST" "${DEST}.bak"
     fi
-    info "Installing to ${DEST}..."
-    sudo cp "${BINARY}" "${DEST}"
-    ok "Installed."
+    info "Installing via cmake --install (binary + data directory)..."
+    sudo cmake --install "${BUILD_DIR}"
+    ok "Installed: binary -> /usr/bin/amiberry-lite"
+    ok "Installed: data   -> /usr/share/amiberry-lite/"
 fi
 
 # ── 12. Final report ──────────────────────────────────────────────────────────
@@ -253,20 +279,32 @@ fi
 
 echo ""
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
-    warn "Build succeeded but required files could not be found anywhere under \$HOME:"
+    warn "Build succeeded but the following required files could not be found"
+    warn "anywhere under \$HOME. Place them manually then re-run this script:"
+    echo ""
     for e in "${ERRORS[@]}"; do echo "      - ${e}"; done
     echo ""
-    echo "  Copy the missing files to:"
+    echo "  Destination directories:"
     echo "      ROMs:        ${ROM_DIR}/"
     echo "      Hard drives: ${HDF_DIR}/"
-    echo "  Then re-run this script."
     exit 1
 fi
 
 echo "==> All done."
-echo "    Binary:   ${BINARY}"
-[[ "$INSTALL" == true ]] && echo "    Installed: /usr/bin/amiberry-lite"
-echo "    Configs:  ${CONF_DIR}/"
-echo "    ROMs:     ${ROM_DIR}/"
-echo "    HDFs:     ${HDF_DIR}/"
-echo "    Shader:   shader=1084 (set in amiberry.conf on next run if not yet)"
+echo ""
+echo "    Binary:      ${BINARY}"
+if [[ "$INSTALL" == true ]]; then
+    echo "    Installed:   /usr/bin/amiberry-lite"
+    echo "    Data dir:    /usr/share/amiberry-lite/"
+fi
+echo "    Configs:     ${CONF_DIR}/"
+echo "    ROMs:        ${ROM_DIR}/"
+echo "    Hard drives: ${HDF_DIR}/"
+echo "    Shader:      shader=1084"
+echo ""
+if [[ "$INSTALL" != true ]]; then
+    echo "  To install system-wide:  sudo cmake --install ${BUILD_DIR}"
+    echo "  Or re-run with:          ./build.sh --install"
+    echo ""
+fi
+echo "  Launch: amiberry-lite"
