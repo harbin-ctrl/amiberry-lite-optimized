@@ -86,5 +86,5 @@ hardfile2=rw,DH0:/home/pi/Amiberry-Lite/harddrives/workbench-211.hdf,0,0,0,512,0
 uaehf0=hdf,rw,DH0:/home/pi/Amiberry-Lite/harddrives/workbench-211.hdf,0,0,0,512,0,,uae0
 filesystem2=rw,DH1:Work:/home/pi/Amiberry-Lite/work,0
 uaehf1=dir,rw,DH1:Work:/home/pi/Amiberry-Lite/work,0
-show_leds=true
+show_leds=false
 show_leds_enabled=fps,cpu
