@@ -1,0 +1,397 @@
+AMIBERRY LITE — CPU, MEMORY, AND ACCURACY SETTINGS
+Source-verified reference for amiberry-lite v5.9.2
+====================================================
+
+This document describes what these config options ACTUALLY DO, traced to the
+emulator source code.  The official docs do not always match the code.
+
+All claims here are sourced from:
+  src/newcpu.cpp        — CPU dispatch, cycle counting, run-loop selection
+  src/blitter.cpp       — Blitter timing and interrupt delivery
+  src/memory.cpp        — Memory bank mapping and direct-access logic
+  src/audio.cpp         — Paula filter and interpolation
+  src/cfgfile.cpp       — Option parsing, machine presets
+  src/fpp_native.cpp.in — FPU rounding and edge-case handling
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CPU OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+cpu_model=<68000|68010|68020|68030|68040|68060>
+
+  Selects the CPU.  This is the primary gate that determines which execution
+  path is used (newcpu.cpp:3932):
+
+    68000/68010  cycle-exact path (m68k_run_1_ce) or compatible path (m68k_run_1)
+                 depending on cpu_cycle_exact and cpu_compatible
+    68020        always uses m68k_run_2_020 regardless of cycle_exact flags
+    68030+       always uses m68k_run_2_020 regardless of cycle_exact flags
+
+  Hardware reality: A2000=68000@7.14MHz, A1200=68EC020@14.32MHz, A3000=68030@25MHz
+
+
+cpu_compatible=true|false
+
+  For 68000/68010: enables a prefetch instruction-queue simulation (m68k_run_1).
+  The 68000 prefetches the next word while executing the current instruction;
+  without this, interrupt timing is less accurate.  (newcpu.cpp:3933)
+
+  For 68020+: enables "fake prefetch" which has minor effect on instruction
+  sequencing but is not a real pipeline simulation.  (newcpu.cpp:952-957 log
+  shows "fake prefetch" label for 68020+ with cpu_compatible)
+
+  This flag is a prerequisite for cpu_cycle_exact to take full effect on 68000.
+  Recommended: true for all configs.
+
+
+cpu_cycle_exact=true|false
+
+  FOR 68000/68010 ONLY: activates the true cycle-exact run function
+  m68k_run_1_ce, which accounts for per-instruction bus cycle counts and
+  DMA contention.  (newcpu.cpp:3932)
+
+  FOR 68020 AND ABOVE: has NO effect on which run function is used.
+  m68k_run_2_020 is always selected.  The code logs this as "~cycle-exact"
+  (with a tilde meaning "approximate") to distinguish it from true cycle
+  accuracy.  (newcpu.cpp:945-949)
+
+  WARNING: On the A1200 (68020), setting cpu_cycle_exact=true was previously
+  observed to throttle the CPU to 7 MHz.  This is because internally the flag
+  interacts with the m68k_speed=0 check (newcpu.cpp:940) which corresponds to
+  M68K_SPEED_7MHZ_CYCLES.  Do not set cpu_cycle_exact=true on A1200 or A3000.
+
+  Our A2000 config correctly sets cpu_cycle_exact=true (68000, real support).
+  Our A1200 and A3000 configs correctly leave it false.
+
+
+cpu_memory_cycle_exact=true|false
+
+  FOR 68000/68010 ONLY: prevents direct host-memory mapping of Amiga memory
+  banks, forcing all accesses through the emulated memory handler where wait
+  states and DMA conflicts can be accounted for.  (memory.cpp:2113)
+  Code: if (cpu_memory_cycle_exact && cpu_model < 68020) { return; }
+
+  FOR 68020 AND ABOVE: the < 68020 guard means this flag has no effect on
+  memory access behavior.  Direct memory mapping proceeds regardless.
+
+  Setting cycle_exact=memory in a config file sets both blitter_cycle_exact
+  and cpu_memory_cycle_exact to true, and cpu_cycle_exact to false.
+  (cfgfile.cpp:5882-5893)
+
+
+cycle_exact=<none|memory|true>
+
+  A combined shorthand (cfgfile.cpp:5882-5893):
+
+    none    — all three cycle-exact flags off
+    memory  — blitter_cycle_exact=true, cpu_memory_cycle_exact=true,
+              cpu_cycle_exact=false
+    true    — all three on (only fully meaningful for 68000/68010)
+
+  This is the "human-readable" form; the three individual flags are also
+  written to the config for backward compatibility.
+
+
+blitter_cycle_exact=true|false
+
+  FOR 68000/68020: activates per-cycle blitter scheduling.  The blitter
+  operates in discrete DMA slots; with this enabled, the CPU is correctly
+  stalled when it tries to access chip RAM while the blitter holds the bus.
+  (blitter.cpp:1696 block, blitter.cpp:1347 check)
+
+  FOR 68030 AND ABOVE: a hard bypass exists in the blitter interrupt path
+  (blitter.cpp:481):
+    if (!done && (... || cpu_model >= 68030 || ...)) return;
+  The interrupt timing for blitter-done is skipped entirely for 68030.
+  Setting this flag on an A3000 config has no effect on the interrupt path,
+  which is the most timing-sensitive part.
+
+  Our A2000 and A1200 configs correctly set blitter_cycle_exact=true.
+  Our A3000 config leaves it false; enabling it would be a no-op on the
+  critical interrupt path due to the source-level bypass.
+
+
+immediate_blits=true|false
+
+  When true, blitter operations complete instantly (zero emulated time).
+  This is a compatibility/speed hack for software that polls the blitter-done
+  flag in a tight loop.  Disables all blitter timing.  (blitter.cpp:1197,
+  1347, 1697, 1731, 1747)
+
+  Accurate emulation: false.  This is already correct in all our configs.
+
+
+waiting_blits=<disabled|automatic|noidleonly|always>
+
+  Controls CPU behavior when the blitter sets the "nasty" flag (DMACON bit 10),
+  which on real hardware forces the CPU to yield all chip-bus cycles.
+  (newcpu.cpp:2802)
+
+  Code:
+    while (SPCFLAG_BLTNASTY && dmaen(DMA_BLITTER) && cycles > 0
+           && ((waiting_blits && cpu_model >= 68020) || !blitter_cycle_exact))
+
+  For 68000 (A2000): blitter_cycle_exact=true handles nasty-mode stalling
+  through the cycle-exact timing machinery.  waiting_blits is not needed.
+
+  For 68020 (A1200): blitter_cycle_exact=true is set, but the cycle-exact
+  machinery for 68020 is approximate.  waiting_blits=automatic would add
+  proper CPU stalling when the blitter holds the bus.  Currently not set in
+  our A1200 config; this is a potential improvement worth investigating.
+
+  For 68030 (A3000): blitter_cycle_exact=false, so !blitter_cycle_exact=true
+  and the while loop IS entered regardless of waiting_blits.  Default behavior
+  of disabled is adequate.
+
+  Values: disabled=0 (no stalling), automatic=1, noidleonly=2, always=3.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CPU SPEED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+cpu_speed=<real|max|N>
+
+  High-level speed selector.  Maps to the internal m68k_speed field.
+  (cfgfile.cpp:6475-6481)
+
+    real  → m68k_speed = -1  (see below)
+    max   → m68k_speed = -1  (runs as fast as host allows — see below)
+    N     → m68k_speed = N * CYCLE_UNIT
+
+  In practice "real" and "max" both set m68k_speed=-1 at the cfgfile level;
+  the distinction is made elsewhere.
+
+  NOTE: For A2000, cpu_speed=real is correct and means the CPU runs locked to
+  the 7.14 MHz chipset clock via cycle-exact timing.
+
+
+finegrain_cpu_speed=<integer>
+
+  The actual internal value that cpu_speed maps to.  (sysconfig.h constants,
+  newcpu.cpp:980-995)
+
+    0    = M68K_SPEED_7MHZ_CYCLES    — CPU throttled to ~7.14 MHz
+    1024 = M68K_SPEED_14MHZ_CYCLES   — CPU throttled to ~14.3 MHz
+    128  = M68K_SPEED_25MHZ_CYCLES   — CPU throttled to ~25 MHz (with cycles_shift)
+    -1   = fastest / unthrottled
+
+  When m68k_speed >= 0, update_68k_cycles() computes a cycles_shift that
+  scales how many host cycles are consumed per emulated instruction to hit the
+  target clock.  (newcpu.cpp:982-995)
+
+  cycles_shift=1 at 14 MHz means each cycle count is doubled (slows relative
+  to host).  cycles_shift=2 at 25 MHz shifts by 4x.
+
+  The A2000 config uses cpu_speed=real which engages cycle-exact 7 MHz timing.
+  The A1200 uses finegrain_cpu_speed=1024 (~14 MHz throttle).
+  The A3000 uses finegrain_cpu_speed=128 (~25 MHz throttle).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FPU OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+fpu_model=<0|68881|68882|68040|68060>
+
+  Specifies which FPU coprocessor chip to emulate.  If not set or 0, no FPU
+  is present.  Without a fpu_model, all other fpu_* settings are irrelevant.
+
+  A2000: no built-in FPU (none set)
+  A1200: no built-in FPU (none set in our config; a real A1200 has no FPU slot
+         but can use a 68882 on an accelerator card)
+  A3000: 68882 external coprocessor on the motherboard
+
+
+fpu_strict=true|false
+
+  Requires fpu_model to be set; has no effect without an active FPU.
+
+  When false (default): fp_round() returns immediately without rounding.
+  Arithmetic results use whatever precision the host CPU (ARM) provides
+  naturally.  (fpp_native.cpp.in:290-293)
+
+  When true:
+  — fp_round() applies fpp_round_prec() after each operation, rounding to
+    the FPU's configured precision register (FPCR precision bits), matching
+    the 68881/882's 80-bit extended real behavior.
+  — fpp_cmp() correctly handles IEEE edge cases: -0.0, NaN, ±infinity
+    comparisons per the Motorola 68881 spec.  (fpp_native.cpp.in:553-576)
+
+  Cost: negligible — only executes during FPU instructions, which are rare
+  in games and demos.  Meaningful for ray tracers, math libraries, and any
+  software that relies on exact 68881/882 floating-point results.
+
+  Changed in our configs: A3000 and A3000 NTSC now use fpu_strict=true.
+  A1200 and A2000 leave it false because no fpu_model is configured.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHIPSET OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+chipset=<ocs|ecs|aga|...>
+
+  Selects the Amiga custom chip generation.
+    OCS  — Original Chip Set (A500, A2000): Agnus + Denise
+    ECS  — Enhanced Chip Set (A3000, A600): Super-Agnus + ECS-Denise
+    AGA  — Advanced Graphics Architecture (A1200, A4000): Alice + Lisa
+
+  Affects which hardware registers and video modes are available to software.
+
+
+chipset_compatible=<A500|A2000|A1200|A3000|...>
+
+  Sets a bundle of chipset sub-options specific to that machine model.
+  (cfgfile.cpp:9982-10016)  The key things each machine preset sets:
+
+  A2000:
+    cs_rtc = 1            (MSM6264 real-time clock)
+    cs_ciaatod = PAL?1:2  (CIA-A TOD clock: 1=50Hz line freq, 2=60Hz)
+    cs_ciatodbug = true   (A2000-specific CIA TOD bug emulation)
+    cs_unmapped_space = 1
+
+  A1200:
+    cs_ide = IDE_A600A1200  (internal IDE controller)
+    cs_pcmcia = true
+    cs_ksmirror_a8 = true
+    cs_ciaoverlay = false
+    cs_eclocksync = 2
+
+  A3000:
+    cs_rtc = 2              (RP5C01 real-time clock)
+    cs_fatgaryrev = 0       (GARY chip revision 0)
+    cs_ramseyrev = 0x0d     (RAMSEY memory controller revision D)
+    cs_mbdmac = 1           (A3000 DMA controller)
+    cs_ksmirror_e0 = false
+    cs_ciaatod = PAL?1:2
+    cs_z3autoconfig = true  (Zorro III autoconfiguration)
+    cs_unmapped_space = 1
+
+  GARY is the glue-logic chip in the A3000 that manages memory arbitration
+  between the CPU, DMA, and chip bus.  cs_fatgaryrev controls which revision
+  is emulated (affects some diagnostic software behavior).
+
+
+chipset_refreshrate=<Hz>
+
+  Sets the chipset clock to the exact real-hardware field rate.  This governs
+  the blitter DMA slot timing, Copper line timing, and audio sample rate
+  synchronization.
+
+  PAL machines:  50.0 Hz (A500/A2000/A3000)
+  NTSC A2000:    59.826099 Hz
+  NTSC A3000:    59.826099 Hz
+  NTSC A1200:    60.054443 Hz  (slightly different due to AGA clock)
+
+  Incorrect values here cause audio-video drift and affect demos that sync
+  music to the vertical blank.
+
+
+collision_level=<none|sprites|playfields|full>
+
+  Controls which hardware collision detections are emulated.
+  (custom.cpp:8792-8795)
+
+    none       — CLXDAT register always reads 0; no collision IRQs
+    sprites    — sprite-to-sprite collisions (level > 1)
+    playfields — sprite-to-playfield collisions (level > 2)
+    full       — all hardware collision detection active
+
+  Real Amiga hardware always computes all collisions.  "full" is correct.
+  The cost is proportional to sprite count and is low in practice.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAULA AUDIO OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The Amiga's Paula chip outputs four 8-bit PCM channels: 0 and 3 are hard-left,
+1 and 2 are hard-right.  Paula also has two hardware low-pass filters: a fixed
+RC filter always present, and a switchable "LED filter" controlled by the power
+LED brightness via CIA output line.
+
+
+sound_filter=<off|on|emulated>
+
+  Controls the Paula low-pass filter.  (audio.cpp:2221-2238)
+
+    off       — led_filter_forced = -1: filter always bypassed
+    on        — led_filter_forced = 1:  filter always active
+    emulated  — led_filter_forced = 0:  filter state follows the power LED
+                (LED bright = filter off, LED dim = filter on), as on
+                real hardware
+
+  "emulated" is the only accurate choice.  The power LED/filter relationship
+  was used by some demos and games deliberately (e.g. turning LED on to
+  soften the audio during quiet sections).
+
+
+sound_filter_type=<standard|enhanced>
+
+  Selects which hardware filter model to use.  (audio.cpp:2228-2233)
+
+    standard  → FILTER_MODEL_A500:  two-stage RC filter at 6.2 kHz and 20 kHz,
+                then a three-stage 7 kHz LED filter.  Models the A500/A2000
+                output stage.  (audio.cpp:469-479)
+
+    enhanced  → FILTER_MODEL_A1200: the fixed output path has no additional
+                filtering; only the LED filter (three-stage at 7 kHz) is
+                applied.  Models the A1200/A4000 output stage with its
+                capacitor-coupled output.  (audio.cpp:488-496)
+
+  Use standard for A2000 and A3000; enhanced for A1200.  Our configs already
+  do this correctly.
+
+
+sound_interpol=<none|anti|sinc|rh|crux>
+
+  Selects the Paula output resampling/interpolation algorithm when the
+  emulator's output sample rate differs from the virtual Amiga's 3.5 MHz
+  Paula clock.  (audio.cpp:2250-2262, interpolmode array in cfgfile.cpp:159)
+
+    none   — nearest sample, no interpolation.  Aliasing audible.
+    anti   — anti-aliased linear interpolation.  Good quality/cost tradeoff.
+    sinc   — windowed sinc resampling.  Highest quality, higher CPU cost.
+    rh     — Ratte/Hastings interpolation.  (audio.cpp:903)
+    crux   — Crux interpolation.  (audio.cpp:960)
+
+  "anti" is the recommended balance.  Our configs use this correctly.
+
+
+sound_stereo_separation=<0-7>
+
+  Controls how much the four Paula channels are mixed left-right.
+  (audio.cpp:2208-2215)
+
+  The real Amiga hardware has 100% separation: channels 0,3 are entirely
+  left; channels 1,2 are entirely right.  sep=7 maps to sep*3/2=10 internally,
+  which hits the >= 15 ceiling and sets sep=16 (MIXED_STEREO_MAX), enabling
+  pure hard-left/right with mixed_on=false — exactly matching hardware.
+
+  sep=0 would fully merge all channels to mono.
+  Our configs use 7 (maximum separation = hardware-accurate).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUMMARY: WHAT ACTUALLY WORKS FOR EACH MACHINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Feature                       A2000(68000)  A1200(68020)  A3000(68030)
+  ─────────────────────────────────────────────────────────────────────
+  cpu_cycle_exact=true          REAL          no effect*    no effect*
+  cpu_memory_cycle_exact=true   REAL          no effect**   no effect**
+  blitter_cycle_exact=true      REAL          REAL          bypassed†
+  fpu_strict=true               n/a (no FPU)  n/a (no FPU)  REAL
+  cpu_compatible=true           REAL          partial       partial
+  cycle_exact=true              REAL          see above     see above
+  cycle_exact=memory            (all 3 on)    blitter only  no real effect
+
+  *  cpu_cycle_exact for 68020+ uses approximate "~cycle-exact" path
+  ** cpu_memory_cycle_exact has no effect on direct memory mapping for 68020+
+  †  blitter_cycle_exact for 68030+ bypassed in interrupt path (blitter.cpp:481)
+
+  The 68020/030 do not have true cycle-exact emulation in this codebase.
+  The run function (m68k_run_2_020) is the same regardless of cycle-exact
+  flags.  This is an architectural limitation, not a configuration issue.
