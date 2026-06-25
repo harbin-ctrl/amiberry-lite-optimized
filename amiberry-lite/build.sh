@@ -28,8 +28,11 @@
 #      could not be found anywhere under $HOME
 #
 # Usage:
-#   ./build.sh              # build only; run binary from build dir
-#   ./build.sh --install    # build + install system-wide
+#   ./build.sh                   # build only; run binary from build dir
+#   ./build.sh --install         # build + install system-wide
+#   ./build.sh --configs-only    # deploy configs without rebuilding
+#   ./build.sh --rebuild         # wipe source tree, clone fresh, full rebuild
+#   ./build.sh --rebuild --install  # clean rebuild + system-wide install
 #
 # Does NOT assume /home/pi — uses $HOME throughout.
 # Tested on Raspberry Pi 400, Debian Bookworm (aarch64),
@@ -67,9 +70,11 @@ REQUIRED_HDFS=(
 
 INSTALL=false
 CONFIGS_ONLY=false
+REBUILD=false
 for arg in "$@"; do
     [[ "$arg" == "--install" ]]      && INSTALL=true
     [[ "$arg" == "--configs-only" ]] && CONFIGS_ONLY=true
+    [[ "$arg" == "--rebuild" ]]      && REBUILD=true
 done
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -176,6 +181,12 @@ for dir in \
 done
 
 # ── 5. Clone ──────────────────────────────────────────────────────────────────
+
+if [[ "$REBUILD" == true && -d "$AMIBERRY_SRC" ]]; then
+    info "Clean rebuild requested — removing ${AMIBERRY_SRC}..."
+    rm -rf "${AMIBERRY_SRC}"
+    ok "Source tree removed"
+fi
 
 if [[ -d "$AMIBERRY_SRC" ]]; then
     info "Source directory '${AMIBERRY_SRC}' already exists — skipping clone."
