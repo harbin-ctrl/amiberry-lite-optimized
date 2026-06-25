@@ -375,6 +375,116 @@ sound_stereo_separation=<0-7>
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONFIG FILE ARCHITECTURE: THE "amiberry." PREFIX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The config file uses two separate parsing namespaces:
+
+  BARE KEYS (e.g. "cpu_model=68020")
+    Handled by cfgfile_parse_option() in cfgfile.cpp.  This covers all
+    standard UAE options: CPU, memory, chipset, audio, input, graphics.
+
+  PREFIXED KEYS (e.g. "amiberry.active_priority=2")
+    Handled by target_parse_option() in amiberry.cpp, which dispatches to
+    target_parse_option_host() or target_parse_option_hardware().
+    These are Amiberry-specific host/GUI settings that have no equivalent
+    in the upstream UAE option set.
+
+The routing logic is in cfgfile.cpp at the option-parsing loop:
+  if line contains '.':
+      section = text before '.'
+      if section == TARGET_NAME ("amiberry"):
+          call target_parse_option(p, bare_key, value, type)
+  else:
+      call cfgfile_parse_option(p, key, value, type)
+
+Consequence: bare keys like "active_priority=2" are sent to cfgfile_parse_option,
+which does NOT handle them — they are silently ignored.  These keys MUST appear
+as "amiberry.active_priority=2" or they have no effect.
+
+TARGET_NAME is "amiberry", defined in src/osdep/target.h:12.
+The write side uses cfgfile_target_dwrite() which automatically prepends the prefix.
+SOURCE: cfgfile.cpp:794-826 (write), cfgfile.cpp:3514-3525 (read routing)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRIORITY AND WINDOW-STATE SETTINGS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ALL of the following keys are Amiberry host settings and REQUIRE the
+"amiberry." prefix.  Without it they are silently ignored.
+SOURCE: amiberry.cpp target_parse_option_host() ~line 2800-3003
+
+They are displayed and edited in the GUI's Priority panel (PanelPrio.cpp).
+
+
+amiberry.active_priority=<0|1|2>
+
+  SDL thread priority while the Amiberry window has focus and the mouse is
+  captured.  (amiberry.cpp setpriority() line 626-640)
+
+    0 = SDL_THREAD_PRIORITY_LOW
+    1 = SDL_THREAD_PRIORITY_NORMAL
+    2 = SDL_THREAD_PRIORITY_HIGH
+
+  NOTE: Loading this key also forces active_nocapture_pause=false and
+  active_nocapture_nosound=false (amiberry.cpp:2989-2993), so the emulator
+  will not pause or mute when the window is active but mouse is uncaptured.
+
+  Our configs: 2 (High)
+
+
+amiberry.inactive_priority=<0|1|2>
+
+  SDL thread priority when the Amiberry window loses focus.
+  Same 0/1/2 scale as above.  Our configs: 2 (High)
+
+
+amiberry.minimized_priority=<0|1|2>
+
+  SDL thread priority when the Amiberry window is minimized.
+  Same 0/1/2 scale as above.  Our configs: 2 (High)
+
+
+amiberry.inactive_pause=true|false
+
+  If true, emulation is paused when the window loses focus.
+  Our configs: false (never pause)
+
+
+amiberry.minimized_pause=true|false
+
+  If true, emulation is paused when the window is minimized.
+  Our configs: false (never pause)
+
+
+amiberry.inactive_nosound=true|false
+
+  If true, audio output is silenced when the window loses focus.
+  Our configs: false (keep audio running)
+
+
+amiberry.minimized_nosound=true|false
+
+  If true, audio output is silenced when the window is minimized.
+  Our configs: false (keep audio running)
+
+
+sound_auto=true|false   (NO prefix — this is a bare UAE key)
+
+  Controls whether the Paula audio subsystem auto-deactivates when it
+  detects no audio work to do (audio_work_to_do counter reaches 0).
+  (audio.cpp:2485-2492)
+
+  When false: audio engine stays active continuously.  More predictable
+  for emulation, avoids any latency from re-activating the audio path.
+
+  This key is handled by cfgfile.cpp:3758 (main parser), NOT by
+  target_parse_option.  It does NOT need the "amiberry." prefix.
+  Our configs: false
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SUMMARY: WHAT ACTUALLY WORKS FOR EACH MACHINE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
