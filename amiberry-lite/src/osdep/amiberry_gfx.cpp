@@ -74,6 +74,7 @@ SDL_Surface* amiga_surface = nullptr;
 #ifdef USE_OPENGL
 SDL_GLContext gl_context;
 crtemu_t* crtemu_tv = nullptr;
+static int last_crtemu_w = 0, last_crtemu_h = 0;
 
 bool set_opengl_attributes();
 bool init_opengl_context(SDL_Window* window);
@@ -369,13 +370,18 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 	if (w < 0 || h < 0)
 		return crtemu_tv != nullptr;
 	write_log("DEBUG: SDL2_alloctexture called with w=%d, h=%d\n", w, h);
-	if (crtemu_tv)
+	const bool dims_changed = (w != last_crtemu_w || h != last_crtemu_h);
+	if (crtemu_tv && dims_changed)
 		destroy_crtemu();
 	if (crtemu_tv == nullptr) {
 		const int crt_type = get_crtemu_type(amiberry_options.shader);
 		crtemu_tv = crtemu_create(static_cast<crtemu_type_t>(crt_type), nullptr);
 		write_log("DEBUG: crtemu_create(type=%d shader='%s') -> %s\n",
 			crt_type, amiberry_options.shader, crtemu_tv ? "OK" : "FAILED");
+		if (crtemu_tv) {
+			last_crtemu_w = w;
+			last_crtemu_h = h;
+		}
 	}
 	if (crtemu_tv)
 		crtemu_frame(crtemu_tv, (CRTEMU_U32*)amiga_surface->pixels, w, h);
@@ -2746,6 +2752,14 @@ void graphics_leave()
 	struct AmigaMonitor* mon = &AMonitors[0];
 	close_windows(mon);
 
+#ifdef USE_OPENGL
+	if (gl_context != nullptr)
+	{
+		SDL_GL_DeleteContext(gl_context);
+		gl_context = nullptr;
+	}
+#endif
+
 	if (kmsdrm_detected)
 	{
 		if (mon->amiga_renderer)
@@ -2778,6 +2792,10 @@ void close_windows(struct AmigaMonitor* mon)
 
 #ifdef USE_OPENGL
 	destroy_crtemu();
+	// GL context kept alive intentionally — see graphics_leave() for deletion.
+	// Deleting here causes Panfrost to fall back to compat mode on the next
+	// SDL_GL_CreateContext call (second context on same window), which breaks
+	// shader compilation on restart.
 #else
 	if (amiga_texture)
 	{
@@ -2787,11 +2805,7 @@ void close_windows(struct AmigaMonitor* mon)
 #endif
 
 #ifdef USE_OPENGL
-	if (gl_context != nullptr)
-	{
-		SDL_GL_DeleteContext(gl_context);
-		gl_context = nullptr;
-	}
+	// (GL context is deleted in graphics_leave, not here)
 #else
 	if (mon->amiga_renderer && !kmsdrm_detected)
 	{
@@ -3227,6 +3241,8 @@ void destroy_crtemu()
 	{
 		crtemu_destroy(crtemu_tv);
 		crtemu_tv = nullptr;
+		last_crtemu_w = 0;
+		last_crtemu_h = 0;
 	}
 #endif
 }
