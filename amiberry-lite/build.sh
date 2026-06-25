@@ -117,6 +117,7 @@ PKGS=(
     libserialport-dev libportmidi-dev libenet-dev
     libmpeg2-4-dev libzstd-dev libpcap-dev
     libglew-dev libgl-dev libegl-dev
+    librsvg2-bin
 )
 
 MISSING_PKGS=()
@@ -146,7 +147,8 @@ for dir in \
     "${LITE_DIR}/screenshots" \
     "${LITE_DIR}/lha" \
     "${LITE_DIR}/plugins" \
-    "${LITE_DIR}/roms"; do
+    "${LITE_DIR}/roms" \
+    "${LITE_DIR}/work"; do
     if [[ -d "$dir" ]]; then
         ok "$dir"
     else
@@ -348,6 +350,63 @@ if [[ "$INSTALL" == true ]]; then
         else
             ok "Wrapper already in place: ${INST_BIN}"
         fi
+    fi
+
+    # ── Waybar launcher icon (optional — skipped if waybar is not in use) ─────
+    WAYBAR_CONF="${HOME}/.config/waybar/config.jsonc"
+    WAYBAR_CSS="${HOME}/.config/waybar/style.css"
+    WAYBAR_ICONS="${HOME}/.config/waybar/icons"
+    AMIBERRY_SVG="/usr/local/share/icons/hicolor/scalable/apps/amiberry-lite.svg"
+
+    if command -v waybar >/dev/null 2>&1 && \
+       [[ -f "$WAYBAR_CONF" && -f "$WAYBAR_CSS" && -d "$WAYBAR_ICONS" && -f "$AMIBERRY_SVG" ]]; then
+        info "waybar detected — adding Amiberry Lite launcher icon..."
+
+        # PNG icon
+        rsvg-convert -w 24 -h 24 "$AMIBERRY_SVG" -o "${WAYBAR_ICONS}/amiberry.png"
+        ok "amiberry.png (24×24) -> ${WAYBAR_ICONS}/"
+
+        # config.jsonc — add module to modules-left and define it (idempotent)
+        if ! grep -q '"custom/amiberry"' "$WAYBAR_CONF"; then
+            sed -i 's|"custom/poingo", "wlr/taskbar"|"custom/poingo", "custom/amiberry", "wlr/taskbar"|' "$WAYBAR_CONF"
+            awk '/\"custom\/poingo\".*setsid poingo/ {
+                print
+                print "  \"custom/amiberry\": { \"format\": \"·\", \"tooltip\": \"Amiberry Lite\", \"on-click\": \"setsid amiberry-lite\" },"
+                next
+            } 1' "$WAYBAR_CONF" > "${WAYBAR_CONF}.tmp" && mv "${WAYBAR_CONF}.tmp" "$WAYBAR_CONF"
+            ok "custom/amiberry added to ${WAYBAR_CONF}"
+        else
+            ok "custom/amiberry already in ${WAYBAR_CONF}"
+        fi
+
+        # style.css — append standalone rules (idempotent; later rules override earlier)
+        if ! grep -q '#custom-amiberry' "$WAYBAR_CSS"; then
+            cat >> "$WAYBAR_CSS" <<'ENDCSS'
+
+/* Amiberry Lite launcher icon — added by build.sh */
+#custom-poingo   { margin-right: 0; }
+#custom-amiberry {
+  padding: 0 6px;
+  margin: 0 8px 0 0;
+  color: transparent;
+  background: transparent;
+  min-width: 26px;
+  background-image: url("icons/amiberry.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 24px 24px;
+}
+#custom-amiberry:hover { background: rgba(135, 145, 155, 0.22); }
+ENDCSS
+            ok "CSS rules appended to ${WAYBAR_CSS}"
+        else
+            ok "#custom-amiberry already in ${WAYBAR_CSS}"
+        fi
+
+        # Reload waybar if running
+        pkill -SIGUSR2 waybar 2>/dev/null && ok "waybar reloaded" || true
+    else
+        info "waybar not detected — skipping launcher icon setup"
     fi
 fi
 
