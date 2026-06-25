@@ -369,7 +369,6 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 #ifdef USE_OPENGL
 	if (w < 0 || h < 0)
 		return crtemu_tv != nullptr;
-	write_log("DEBUG: SDL2_alloctexture called with w=%d, h=%d\n", w, h);
 	const bool dims_changed = (w != last_crtemu_w || h != last_crtemu_h);
 	if (crtemu_tv && dims_changed)
 		destroy_crtemu();
@@ -378,8 +377,6 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 			SDL_GL_MakeCurrent(AMonitors[monid].amiga_window, gl_context);
 		const int crt_type = get_crtemu_type(amiberry_options.shader);
 		crtemu_tv = crtemu_create(static_cast<crtemu_type_t>(crt_type), nullptr);
-		write_log("DEBUG: crtemu_create(type=%d shader='%s') -> %s\n",
-			crt_type, amiberry_options.shader, crtemu_tv ? "OK" : "FAILED");
 		if (crtemu_tv) {
 			last_crtemu_w = w;
 			last_crtemu_h = h;
