@@ -374,6 +374,8 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 	if (crtemu_tv && dims_changed)
 		destroy_crtemu();
 	if (crtemu_tv == nullptr) {
+		if (gl_context && AMonitors[monid].amiga_window)
+			SDL_GL_MakeCurrent(AMonitors[monid].amiga_window, gl_context);
 		const int crt_type = get_crtemu_type(amiberry_options.shader);
 		crtemu_tv = crtemu_create(static_cast<crtemu_type_t>(crt_type), nullptr);
 		write_log("DEBUG: crtemu_create(type=%d shader='%s') -> %s\n",
