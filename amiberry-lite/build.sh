@@ -66,7 +66,11 @@ REQUIRED_HDFS=(
 )
 
 INSTALL=false
-for arg in "$@"; do [[ "$arg" == "--install" ]] && INSTALL=true; done
+CONFIGS_ONLY=false
+for arg in "$@"; do
+    [[ "$arg" == "--install" ]]      && INSTALL=true
+    [[ "$arg" == "--configs-only" ]] && CONFIGS_ONLY=true
+done
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -86,6 +90,18 @@ find_file() {
         -name "$name" \
         2>/dev/null | head -1
 }
+
+if [[ "$CONFIGS_ONLY" == true ]]; then
+    info "Installing configs to ${CONF_DIR}..."
+    for src in "${SCRIPT_DIR}/configs/"*.uae; do
+        name="$(basename "$src")"
+        dest="${CONF_DIR}/${name}"
+        sed "s|/home/pi|${HOME}|g" "$src" > "$dest"
+        ok "${name}"
+    done
+    echo "==> Configs deployed to ${CONF_DIR}/"
+    exit 0
+fi
 
 # ── 1. Remove conflicting amiberry (full) installations ──────────────────────
 
