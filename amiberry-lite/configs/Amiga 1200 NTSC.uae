@@ -88,3 +88,5 @@ input.autofire_speed=600
 input.autoswitch=true
 hardfile2=rw,DH0:/home/pi/Amiberry-Lite/harddrives/workbench-311.hdf,0,0,0,512,0,,uae0
 uaehf0=hdf,rw,DH0:/home/pi/Amiberry-Lite/harddrives/workbench-311.hdf,0,0,0,512,0,,uae0
+show_leds=true
+show_leds_enabled=fps,cpu
