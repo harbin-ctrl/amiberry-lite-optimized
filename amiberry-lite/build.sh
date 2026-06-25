@@ -332,15 +332,23 @@ fi
 # GUI throws "No usable font found in theme" on first launch.
 
 if [[ "$INSTALL" == true ]]; then
-    DEST="/usr/bin/amiberry-lite"
-    if [[ -f "$DEST" ]]; then
-        info "Backing up existing binary to ${DEST}.bak"
-        sudo cp "$DEST" "${DEST}.bak"
-    fi
     info "Installing via cmake --install (binary + data directory)..."
     sudo cmake --install "${BUILD_DIR}"
-    ok "Installed: binary -> /usr/bin/amiberry-lite"
-    ok "Installed: data   -> /usr/share/amiberry-lite/"
+    ok "Installed: data -> /usr/local/share/amiberry-lite/"
+
+    # Rename the installed binary and put the wrapper in its place so that
+    # a crashed session never leaves the Mesa shader cache in a broken state.
+    INST_BIN="/usr/local/bin/amiberry-lite"
+    if [[ -f "${INST_BIN}" && ! -L "${INST_BIN}" ]]; then
+        if ! file "${INST_BIN}" | grep -q "shell script"; then
+            sudo mv "${INST_BIN}" "${INST_BIN}.bin"
+            sudo install -m 0755 "${SCRIPT_DIR}/amiberry-lite-wrapper.sh" "${INST_BIN}"
+            ok "Installed: wrapper -> ${INST_BIN}"
+            ok "Installed: binary  -> ${INST_BIN}.bin"
+        else
+            ok "Wrapper already in place: ${INST_BIN}"
+        fi
+    fi
 fi
 
 # ── 14. Final report ──────────────────────────────────────────────────────────
