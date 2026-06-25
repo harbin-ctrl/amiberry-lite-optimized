@@ -81,10 +81,10 @@ bool init_opengl_context(SDL_Window* window);
 static uae_u8* create_packed_pixel_buffer(const SDL_Surface* src, const SDL_Rect& crop, SDL_Rect& out_buffer_rect);
 static int get_crtemu_type(const char* shader)
 {
-	if (!shader) return CRTEMU_TYPE_TV;
-	// Simple case handling without extra deps
-	if (!std::strcmp(shader, "tv") || !std::strcmp(shader, "TV"))             return CRTEMU_TYPE_TV;
-	if (!std::strcmp(shader, "pc") || !std::strcmp(shader, "PC"))             return CRTEMU_TYPE_PC;
+	if (!shader || !shader[0])                                                 return CRTEMU_TYPE_TV;
+	if (!std::strcmp(shader, "none") || !std::strcmp(shader, "off"))          return -1; // disabled
+	if (!std::strcmp(shader, "tv")   || !std::strcmp(shader, "TV"))           return CRTEMU_TYPE_TV;
+	if (!std::strcmp(shader, "pc")   || !std::strcmp(shader, "PC"))           return CRTEMU_TYPE_PC;
 	if (!std::strcmp(shader, "lite") || !std::strcmp(shader, "LITE"))         return CRTEMU_TYPE_LITE;
 	if (!std::strcmp(shader, "1084") || !std::strcmp(shader, "1084S"))        return CRTEMU_TYPE_1084;
 	return CRTEMU_TYPE_TV;
@@ -376,6 +376,8 @@ static bool SDL2_alloctexture(int monid, int w, int h, const int depth)
 		if (gl_context && AMonitors[monid].amiga_window)
 			SDL_GL_MakeCurrent(AMonitors[monid].amiga_window, gl_context);
 		const int crt_type = get_crtemu_type(amiberry_options.shader);
+		if (crt_type < 0)
+			return false; // shader disabled — fall through to SDL renderer
 		crtemu_tv = crtemu_create(static_cast<crtemu_type_t>(crt_type), nullptr);
 		if (crtemu_tv) {
 			last_crtemu_w = w;

@@ -9,7 +9,9 @@
 #   3. Installs missing build packages via apt-get
 #   4. Creates the expected Amiberry-Lite directory tree under $HOME
 #   5. Clones Amiberry Lite v5.9.2 from GitHub (skips if already present)
-#   6. Applies the 1084S shader modifications (crtemu.h + amiberry_gfx.cpp)
+#   6. Applies the 1084S shader modifications (crtemu.h + amiberry_gfx.cpp +
+#      PanelShader.cpp) and patches gui_handling.h, main_window.cpp,
+#      SourceFiles.cmake to add the Shader GUI panel
 #   7. Builds with OpenGL enabled (USE_OPENGL=ON)
 #   8. Verifies the shader is compiled into the binary
 #   9. Checks required ROM files; searches all of $HOME if not in place,
@@ -166,12 +168,65 @@ else
     git clone --depth=1 --branch "${AMIBERRY_TAG}" "${AMIBERRY_REPO}" "${AMIBERRY_SRC}"
 fi
 
-# ── 6. Apply shader patch ─────────────────────────────────────────────────────
+# ── 6. Apply shader patch + GUI panel ────────────────────────────────────────
 
 info "Applying 1084S shader modifications..."
-cp "${SCRIPT_DIR}/src/osdep/crtemu.h"         "${AMIBERRY_SRC}/src/osdep/crtemu.h"
-cp "${SCRIPT_DIR}/src/osdep/amiberry_gfx.cpp" "${AMIBERRY_SRC}/src/osdep/amiberry_gfx.cpp"
-ok "crtemu.h + amiberry_gfx.cpp applied"
+cp "${SCRIPT_DIR}/src/osdep/crtemu.h"             "${AMIBERRY_SRC}/src/osdep/crtemu.h"
+cp "${SCRIPT_DIR}/src/osdep/amiberry_gfx.cpp"     "${AMIBERRY_SRC}/src/osdep/amiberry_gfx.cpp"
+cp "${SCRIPT_DIR}/src/osdep/gui/PanelShader.cpp"  "${AMIBERRY_SRC}/src/osdep/gui/PanelShader.cpp"
+ok "crtemu.h + amiberry_gfx.cpp + PanelShader.cpp applied"
+
+info "Patching GUI build files for Shader panel..."
+python3 - "${AMIBERRY_SRC}" <<'PYEOF'
+import sys
+base = sys.argv[1]
+
+# gui_handling.h — add PanelShader declarations after PanelDisplay declarations
+path = f"{base}/src/osdep/gui/gui_handling.h"
+text = open(path).read()
+if 'InitPanelShader' not in text:
+    insert = (
+        '\nvoid InitPanelShader(const struct config_category& category);\n'
+        'void ExitPanelShader();\n'
+        'void RefreshPanelShader();\n'
+        'bool HelpPanelShader(std::vector<std::string>& helptext);\n'
+    )
+    text = text.replace(
+        'bool HelpPanelDisplay(std::vector<std::string>& helptext);',
+        'bool HelpPanelDisplay(std::vector<std::string>& helptext);' + insert
+    )
+    open(path, 'w').write(text)
+    print("    [OK]     gui_handling.h patched (PanelShader declarations)")
+else:
+    print("    [OK]     gui_handling.h already patched")
+
+# main_window.cpp — insert Shader entry between Display and Sound in categories[]
+path = f"{base}/src/osdep/gui/main_window.cpp"
+text = open(path).read()
+if '"Shader"' not in text:
+    text = text.replace(
+        '\t{"Sound", "sound.png", nullptr, nullptr, InitPanelSound',
+        '\t{"Shader", "screen.png", nullptr, nullptr, InitPanelShader, ExitPanelShader, RefreshPanelShader, HelpPanelShader},\n'
+        '\t{"Sound", "sound.png", nullptr, nullptr, InitPanelSound'
+    )
+    open(path, 'w').write(text)
+    print("    [OK]     main_window.cpp patched (Shader category)")
+else:
+    print("    [OK]     main_window.cpp already patched")
+
+# SourceFiles.cmake — add PanelShader.cpp after PanelDisplay.cpp
+path = f"{base}/cmake/SourceFiles.cmake"
+text = open(path).read()
+if 'PanelShader.cpp' not in text:
+    text = text.replace(
+        'src/osdep/gui/PanelDisplay.cpp',
+        'src/osdep/gui/PanelDisplay.cpp\n        src/osdep/gui/PanelShader.cpp'
+    )
+    open(path, 'w').write(text)
+    print("    [OK]     SourceFiles.cmake patched (PanelShader.cpp)")
+else:
+    print("    [OK]     SourceFiles.cmake already patched")
+PYEOF
 
 # ── 7. Build ──────────────────────────────────────────────────────────────────
 
