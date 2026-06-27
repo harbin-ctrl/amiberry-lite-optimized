@@ -11,7 +11,7 @@ The original shader is incredibly accurate but relies on complex conditional bra
 
 ## What Changed?
 * **Vectorized Border Logic:** Replaced expensive conditional border checks with a single mathematical `step()` function.
-* **Scanline Alignment:** Simplified the scanline and moire interference calculations by locking them purely to the `SourceSize.y` (the native 240p vertical resolution).
+* **Scanline Alignment:** Simplified the scanline and moire interference calculations by locking them purely to the `SourceSize.y` uniform. This is dynamically injected by your emulator, meaning it automatically adapts to whatever system you are running without any manual configuration required. (e.g., 224p for SNES, 240p for NES, or 480i for PS1).
 * **Removed Clamp Saturation:** Removed redundant `clamp` boundaries, allowing the GPU stream processors to vectorize the fragment math without halting.
 
 ## What is Lost?
