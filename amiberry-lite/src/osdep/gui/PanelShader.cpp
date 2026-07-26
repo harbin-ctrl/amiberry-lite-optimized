@@ -12,12 +12,13 @@ extern void destroy_crtemu();
 
 static const std::vector<std::string> shader_names = {
     "1084S (Commodore 1084S CRT)",
+    "1084S Fast (Optimised, same look)",
     "TV (Generic TV phosphor)",
     "PC (Computer monitor)",
     "Lite (Minimal scanlines)",
 };
-static const char* const shader_values[] = { "1084", "tv", "pc", "lite" };
-static const int NUM_SHADER_PRESETS = 4;
+static const char* const shader_values[] = { "1084", "1084-fast", "tv", "pc", "lite" };
+static const int NUM_SHADER_PRESETS = 5;
 
 static gcn::CheckBox* chkShaderEnabled;
 static gcn::Label*    lblShaderPreset;
