@@ -9,8 +9,8 @@ Amiberry Lite is faster than full Amiberry for CPU emulation on the Pi 400 but l
 ## Quick start
 
 ```bash
-git clone https://github.com/harbin-ctrl/amiberry-lite-optimized.git
-cd amiberry-lite-optimized
+git clone https://github.com/harbin-ctrl/amiberry-shaders.git
+cd amiberry-shaders/amiberry-lite
 ./build.sh --install
 ```
 
